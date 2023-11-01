@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2023/10/20 11:12
 # @Author  : ljq
-# @desc    : 
+# @desc    : 1. SMP中的Unet torch.cat 是不对等的。 2. SMP中的Head比较长 3. Unet论文中upconv后接两个卷积的结果会太深了 4.Unet底下的1024再upconv上来也是不必要的
 # @File    : UnetHead.py
 import torch
 import torch.nn as nn
@@ -20,9 +20,6 @@ class UPConv(nn.Module):
             nn.Conv2d(output_channel * 2, output_channel, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(output_channel),
             nn.ReLU(inplace=True),
-            nn.Conv2d(output_channel, output_channel, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(output_channel),
-            nn.ReLU(inplace=True)
         )
 
     def forward(self, x, skip):
@@ -33,11 +30,11 @@ class UPConv(nn.Module):
 
 
 class BottomConv(nn.Module):
-    def __init__(self, input_channel):
+    def __init__(self, input_channel, output_channel):
         super().__init__()
         self.ConvBlock = nn.Sequential(
-            nn.Conv2d(input_channel, input_channel, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(input_channel),
+            nn.Conv2d(input_channel, output_channel, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(output_channel),
             nn.ReLU(inplace=True),
         )
 
@@ -84,29 +81,28 @@ class UnetHead(nn.Module):
         """
         super().__init__()
         # 从Channels来选择
-        self.bottom_layer = BottomConv(channels[0])
         self.decoder_layer1 = UPConv(channels[0], channels[1])
         self.decoder_layer2 = UPConv(channels[1], channels[2])
         self.decoder_layer3 = UPConv(channels[2], channels[3])
         # resnet的头和尾部是一样的
         self.decoder_layer4 = UPConv(channels[3], channels[3])
+
         # cls head
         self.cls = ClsBlock(channels[3], cls_num, activation)
 
     def get_stage(self):
-        return [self.bottom_layer, self.decoder_layer1, self.decoder_layer2, self.decoder_layer3, self.decoder_layer4]
+        return [self.decoder_layer1, self.decoder_layer2, self.decoder_layer3, self.decoder_layer4]
 
     def forward(self, features):
-        bottom_feature = features[0]
+        x = features[0]
         intern_features = features[1:]
         stages = self.get_stage()
-        intern_stages = stages[1:]
         # 开始进行upsample
-        x = stages[0](bottom_feature)
-        for f, stage in zip(intern_features, intern_stages):
-            x = F.interpolate(x, scale_factor=2, mode='nearest')
+        for f, stage in zip(intern_features, stages):
+            x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
             x = stage(x, f)
         # 最后对结果添加一个分类头
+        x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
         return self.cls(x)
 
 

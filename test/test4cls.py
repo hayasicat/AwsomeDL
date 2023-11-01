@@ -57,7 +57,7 @@ test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False, num_workers
 model = ResNet34(100)
 # model = resnet34git(100)
 model.init_weights()
-model = torchvision.models.resnet34(False)
+# model = torchvision.models.resnet34(False)
 # model.fc = nn.Linear(model.fc.in_features, 100)
 # model = model.train().to(device)
 # 多卡并行训练

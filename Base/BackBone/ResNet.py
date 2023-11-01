@@ -5,7 +5,7 @@
 # @差异： 1. BasicBlock中第二个卷积没有nn.relu  -> 原因不在于此，加上以后精度也没有发生变化
 #         2. 去掉MaxPool2d让第一个block来训练   -> 没有用      -> 对于小图片来说MaxPool2d还是掉点蛮严重的
 #          3. Conv去掉bias                     -> 似乎能panelty了
-#          4. 首层的strid变成1                  -> 没有用的    -> 对于小图片来说strid为2也是掉点蛮严重的
+#          4. 首层的strid变成1                  -> 没有用的    -> 对于小图片来说stride为2也是掉点蛮严重的
 #          5. 首层的kernel size变成3            -> 也是没有用
 #          6. 用.vew代替flantten                -> 没什么效果
 #          7. 首层的padding 改为1               -> 似乎效果是不错的
@@ -118,7 +118,8 @@ class ResNet(nn.Module):
         self.fc = nn.Linear(channels[-1], num_class)
 
     def get_stages(self):
-        return [self.ConvHead, nn.Sequential(self.maxpool2d, self.layer1), self.layer2, self.layer3, self.layer4]
+        return [self.ConvHead, nn.Sequential(self.maxpool2d, self.layer1), self.layer2, self.layer3,
+                self.layer4]
 
     def forward(self, input_tensor):
         x = self.ConvHead(input_tensor)
@@ -156,8 +157,8 @@ class ResNet(nn.Module):
 
 
 class ResNet18(ResNet):
-    def __init__(self, num_cls):
-        super().__init__(BasicBlock, num_cls)
+    def __init__(self, num_cls, small_scale=False):
+        super().__init__(BasicBlock, num_cls, small_scale=small_scale)
 
 
 class ResNet34(ResNet):
