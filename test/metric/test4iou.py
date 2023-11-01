@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 from Base.SegHead.Unet import Unet, UnetHead
 from Base.BackBone import ResNet34, ResNet18
-from Base.Metrics.SEG import IOU
+from Base.Metrics.SEG import IOUMetric
 from VisualTask.Seg.Inference import SegInference
 from Transfer.VisualFLS.dataset import FLSDataset, FLS_test_transforms, FLS_norm_transform
 
@@ -25,13 +25,17 @@ model = Unet(encoder, decoder)
 model.load_state_dict(torch.load('../../data/lockhole/190_unet_res34.pth'))
 model = model.to(torch.device("cuda:0"))
 model.eval()
+metric = IOUMetric(2)
 for x, gts in test_loader:
     with torch.no_grad():
         x = x.to(torch.device("cuda:0"))
         gts = gts.to(torch.device("cuda:0"))
         preds = model(x)
-        IOU.iou(preds, gts)
-
+        # 添加后处理
+        preds = torch.softmax(preds, dim=1)
+        preds = torch.argmax(preds, dim=1)
+        metric.batch_miou(preds.cpu().numpy(), gts.cpu().numpy())
+print(metric.miou())
 # SegInfere = SegInference(model, torch.device("cuda:0"))
 # img_root_path = '/backup/VisualFLS/imgs'
 # visual_mask_path = '/backup/VisualFLS/view_mask'

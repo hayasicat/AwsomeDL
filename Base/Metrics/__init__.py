@@ -1,2 +1,2 @@
 from .CLS import Accuracy
-from .SEG import IOU
+from .SEG import IOUMetric
