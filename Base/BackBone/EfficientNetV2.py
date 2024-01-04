@@ -115,6 +115,7 @@ class EfficientNetV2S(nn.Module):
         self.max_drop_ratio = max_drop_ratio
         # self.block_num = [1, 2, 2, 3, 3, 1]
 
+
         self.expand_ratios = [1, 4, 4, 4, 6, 6]
         self.strides = [1, 2, 2, 2, 1, 1]
         # 小图片去掉stride试试
