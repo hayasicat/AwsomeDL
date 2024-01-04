@@ -2,7 +2,7 @@
 # @author:ljq
 # @date: 2023/8/8 22:46
 # @desc: 可以注册进hook用来保存
-
+import os
 import torch
 from torch.utils.data import DataLoader
 from torch import nn
@@ -18,9 +18,10 @@ class CLSTrainer:
     batch_size = 600
     num_workers = 4
 
-    def __init__(self, train_dataset, test_dataset, model):
+    def __init__(self, train_dataset, test_dataset, model, save_path='../data'):
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
+        self.save_path = save_path
         self.model = model
         # 如果gpu可用的话
         if torch.cuda.is_available():
@@ -31,6 +32,9 @@ class CLSTrainer:
             self.device = torch.device("cuda")
         else:
             self.device = torch.device("cpu")
+
+        if not os.path.exists(self.save_path):
+            os.mkdir(self.save_path)
 
     def train(self):
         train_loader = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
@@ -59,6 +63,7 @@ class CLSTrainer:
             print('epoch is {}, train_loss is {}'.format(e, sum(total_loss) / len(total_loss)))
             if e % 5 == 0:
                 self.model.eval()
+                self.save_checkpoints(e)
                 with torch.no_grad():
                     for img, labels in test_loader:
                         img = img.to(self.device)
@@ -66,3 +71,12 @@ class CLSTrainer:
                         Accuracy(pred, labels)
                 print('epoch is {}, acc is {}'.format(e, Accuracy.acc()))
                 Accuracy.clean()
+
+    def save_checkpoints(self, e):
+        self.model.eval()
+        save_name = "{}_model.pth".format(e)
+        if self.is_parallel:
+            model = self.model.module
+        else:
+            model = self.model
+        torch.save(model.state_dict(), os.path.join(self.save_path, save_name))

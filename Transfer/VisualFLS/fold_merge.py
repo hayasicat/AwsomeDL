@@ -9,7 +9,7 @@ import time
 import shutil
 from shutil import copyfile
 
-days_root = r'/backup/VisualFLS/imgs'
+days_root = r'/backup/VisualFLS/data'
 folds_root = os.listdir(days_root)
 for fold_root_name in folds_root:
     fold_root = os.path.join(days_root, fold_root_name)
@@ -36,3 +36,5 @@ for fold_root_name in folds_root:
                 os.remove(os.path.join(sub_root, files_name))
             shutil.rmtree(sub_root)
         shutil.rmtree(date_fold_path)
+
+# 把主目录文件夹里面的图片按通道区分，并标记好区域，以供筛选

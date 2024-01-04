@@ -9,6 +9,7 @@ import datetime
 import shutil
 
 from Transfer.VisualFLS.CreateSegLabel import create_seg_mask
+from Transfer.VisualFLS.ReWriteCorner import rewrite_corner_label
 
 
 def gen_train_val_list(root_path, is_init=False):
@@ -41,8 +42,10 @@ def gen_train_val_list(root_path, is_init=False):
         f.close()
     # 生成相关的seg到指定的目录
     create_seg_mask(root_path, base_fold)
+    # 生成只有角点的标签到特殊的目录里面
+    rewrite_corner_label(os.path.join(root_path, base_fold), os.path.join(root_path, 'seg'))
 
 
 if __name__ == '__main__':
-    root_path = '/backup/VisualFLS'
+    root_path = '/root/data/VisualFLS'
     gen_train_val_list(root_path, True)

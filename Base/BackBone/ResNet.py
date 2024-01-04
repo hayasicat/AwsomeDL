@@ -96,6 +96,7 @@ class ResNet(nn.Module):
         super().__init__()
         # 不同层的话就是配置的内容不一样
         channels = [64, 128, 256, 512]
+        self.channels = channels
         if small_scale:
             self.first_conv = nn.Conv2d(input_chans, channels[0], kernel_size=3, stride=1, padding=1, bias=False)
         else:
@@ -157,13 +158,13 @@ class ResNet(nn.Module):
 
 
 class ResNet18(ResNet):
-    def __init__(self, num_cls, small_scale=False):
-        super().__init__(BasicBlock, num_cls, small_scale=small_scale)
+    def __init__(self, num_cls, small_scale=False, input_chans=3):
+        super().__init__(BasicBlock, num_cls, small_scale=small_scale, input_chans=input_chans)
 
 
 class ResNet34(ResNet):
-    def __init__(self, num_cls, small_scale=False):
-        super().__init__(BasicBlock, num_cls, repeats=[3, 4, 6, 3], small_scale=small_scale)
+    def __init__(self, num_cls, small_scale=False, input_chans=3):
+        super().__init__(BasicBlock, num_cls, repeats=[3, 4, 6, 3], small_scale=small_scale, input_chans=input_chans)
 
 
 class ResNet50(ResNet):
@@ -179,5 +180,5 @@ if __name__ == '__main__':
     # print(t.size())
     m = ResNet(BottleneckBlock, 100)
     m.init_weights()
-    t = m(torch.zeros(1, 3, 224, 224))
-    print(t.size())
+    t = m.feature_extract(torch.zeros(1, 3, 224, 224))
+    print([f.size() for f in t])

@@ -5,15 +5,9 @@
 # @File    : test4lockedhole.py
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,3'
 
 import torch
-import torch.nn as nn
-import numpy as np
-import torchvision
-import matplotlib.pyplot as plt
-import albumentations as alb
-from PIL import Image
 
 from VisualTask.Seg.trainner import SegTrainner
 from torch.utils.data import DataLoader
@@ -23,19 +17,23 @@ from Transfer.VisualFLS.dataset import FLSDataset, FLS_norm_transform, FLS_test_
 
 device = torch.device('cuda')
 
-train_dataset = FLSDataset('/backup/VisualFLS', transforms=FLS_train_transforms, norm_transforms=FLS_norm_transform)
-val_dataset = FLSDataset('/backup/VisualFLS', is_train=False, transforms=FLS_test_transforms,
+train_dataset = FLSDataset('/backup/VisualFLS', is_crop=False, transforms=FLS_train_transforms,
+                           norm_transforms=FLS_norm_transform)
+val_dataset = FLSDataset('/backup/VisualFLS', is_crop=False, is_train=False, transforms=FLS_test_transforms,
                          norm_transforms=FLS_norm_transform)
 
-root_path = '../data/lockhole'
+root_path = '../data/lockhole/small_picture'
+if not os.path.exists(root_path):
+    os.makedirs(root_path)
 
-train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=4)
-test_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4)
+# train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=4)
+# test_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4)
 
 encoder = ResNet34(20, small_scale=False)
-decoder = UnetHead(2, activation='')
-model = Unet(encoder, decoder)
+decoder = UnetHead()
+# head应该在这边
+model = Unet(encoder, decoder, 3, activation='')
 
-
-trainner = SegTrainner(train_dataset, val_dataset, model, 2, save_path=root_path)
+trainner = SegTrainner(train_dataset, val_dataset, model, 3, save_path=root_path, lr=0.0001)
+trainner.batch_size = 12
 trainner.train()

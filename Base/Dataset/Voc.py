@@ -45,5 +45,5 @@ class MyVocDataset(torchvision.datasets.VOCSegmentation):
         if self.norm_transform is not None:
             img = self.norm_transform(image=img)['image']
         img = img.transpose(2, 0, 1)
-        target[target == 255] = 0
+        # target[target == 255] = 255
         return img, target

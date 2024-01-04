@@ -3,56 +3,66 @@
 # @Author  : ljq
 # @desc    : 
 # @File    : Inference.py
+import os
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import cv2
 import torch
 import numpy as np
 import albumentations as albu
-
-pre_transform = albu.Compose([
-    albu.Resize(640, 640),
-    albu.Normalize(mean=(0.5, 0.5, 0.5),
-                   std=(0.5, 0.5, 0.5))
-])
+from Base.Visual.SegView import SegViewer
 
 
 class SegInference():
-    def __init__(self, model, device):
+    def __init__(self, model, device, transform=None, norm_transform=None):
         self.model = model
         self.model.eval()
         self.device = device
+        self.viewer = SegViewer()
+        # 注册推理的钩子
+        # TODO： 钩子的部分不应该自己手动注册，应该在模型推理的时候定义好了
+        self.transform = transform
+        self.norm_transform = norm_transform
+        self.inf_heads = []
 
-    def visual(self, img, crop_size=[420, 0, 1080, 1080], target=None):
-        """
-        缩放以后再将feature map缩放回去
-        :param img:
-        :param target:
-        :return:
-        """
-        x, y, w, h = crop_size
-        img = img[y:y + h, x:x + w]
-        img_tensor = pre_transform(image=img)['image']
-        img_tensor = torch.from_numpy(img_tensor).permute(2, 0, 1).unsqueeze(0).to(self.device)
-        pred_mask = self.model(img_tensor)
-        preds = torch.softmax(pred_mask, dim=1)
-        preds = torch.argmax(preds, dim=1)
-        preds = preds.detach().cpu().permute(1, 2, 0).numpy().astype(np.uint8).reshape(
-            (preds.shape[1], preds.shape[2]))
-        # 得到预测图片,给原始图片着色
-        img = cv2.resize(img, (640, 640))
-        green = np.full(img.shape, (0, 0, 255), dtype=np.uint8)
-        # preds = cv2.cvtColor(preds, cv2.COLOR_GRAY2BGR)
-        # green_mask = cv2.bitwise_and(green, preds)
-        green[:, :, 2] = green[:, :, 2] * preds
-        dst = cv2.addWeighted(img, 0.5, green, 0.5, 0)
+    def register(self, func):
+        self.inf_heads.append(func)
+
+    def kp_head(self, img, pred):
+        pred = pred.detach().cpu().squeeze(0).permute(1, 2, 0).numpy()
+        dst = self.viewer.kp_view(img, pred)
         return dst
 
-    def inference(self, img, crop_size=[420, 0, 1080, 1080]):
-        x, y, w, h = crop_size
-        img = img[y:y + h, x:x + w]
-        img_tensor = pre_transform(image=img)['image']
+    def cls_head(self, img, pred):
+        color_ = np.array([
+            [0, 0, 0],
+            [0, 0, 255],
+            [0, 255, 0]], np.uint8)
+
+        pred = torch.softmax(pred, dim=1)
+        pred = torch.argmax(pred, dim=1)
+        pred = pred.detach().cpu().permute(1, 2, 0).numpy().astype(np.uint8).reshape(
+            (pred.shape[1], pred.shape[2]))
+        dst = self.viewer.cls_view(img, pred, color=color_)
+        return dst
+
+    def inference(self, img, crop_size=[420, 0, 1080, 1080], is_crop=False, is_draw=False):
+        if not is_crop:
+            x, y, w, h = crop_size
+            img = img[y:y + h, x:x + w]
+        if not self.transform is None:
+            img = self.transform(image=img)['image']
+        img_tensor = img
+        if not self.norm_transform is None:
+            img_tensor = self.norm_transform(image=img_tensor)['image']
         img_tensor = torch.from_numpy(img_tensor).permute(2, 0, 1).unsqueeze(0).to(self.device)
-        pred_mask = self.model(img_tensor).squeeze(0)
-        return pred_mask
+        preds = self.model(img_tensor)
+        if not is_draw:
+            return preds
+        result = []
+        for head_func, pred in zip(self.inf_heads, preds):
+            result.append(head_func(img, pred))
+        return result
 
 
 if __name__ == '__main__':
@@ -61,21 +71,40 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from Base.SegHead.Unet import Unet, UnetHead
     from Base.BackBone import ResNet34, ResNet18
+    from Transfer.VisualFLS.dataset import FLS_test_transforms, FLS_norm_transform
 
     encoder = ResNet34(20, small_scale=False)
-    decoder = UnetHead(2, activation='')
-    model = Unet(encoder, decoder)
-    model.load_state_dict(torch.load('../../data/lockhole/190_unet_res34.pth'))
+    decoder = UnetHead()
+    model = Unet(encoder, decoder, 3, 2, activation='')
+    model.load_state_dict(torch.load('../../data/lockhole/multi_head/190_model.pth'))
     model = model.to(torch.device("cuda:0"))
     model.eval()
-    SegInfere = SegInference(model, torch.device("cuda:0"))
-    img_root_path = '/backup/VisualFLS/imgs'
+    seg_inf = SegInference(model, torch.device("cuda:0"), FLS_test_transforms, FLS_norm_transform)
+    seg_inf.register(seg_inf.cls_head)
+    seg_inf.register(seg_inf.kp_head)
+    img_root_path = '/backup/VisualFLS/crop_imgs'
     visual_mask_path = '/backup/VisualFLS/view_mask'
+    if not os.path.exists(visual_mask_path):
+        os.makedirs(visual_mask_path)
     # img_files = [f for f in os.listdir(img_root_path) if f.endswith('.jpg')]
-    img_files = open('/backup/VisualFLS/val.txt', 'r', encoding='utf-8').read().strip().split('\n')
+    # img_files = open('/backup/VisualFLS/val.txt', 'r', encoding='utf-8').read().strip().split('\n')
+    # for img_name in img_files:
+    #     img = cv2.imread(os.path.join(img_root_path, img_name), cv2.IMREAD_COLOR)
+    #     dst = SegInfere.visual(img, is_crop=True)
+    #     cv2.imwrite(os.path.join(visual_mask_path, img_name), dst)
+    # plt.imshow(dst)
+    # plt.show()
+    # 箱型检测
+    img_root_path = r'/backup/VisualFLS/container_type'
+    img_files = os.listdir(img_root_path)
+    img_files = [f for f in os.listdir(img_root_path) if f.endswith('.jpg')]
+    # img_files = open('/backup/VisualFLS/val.txt', 'r', encoding='utf-8').read().strip().split('\n')
     for img_name in img_files:
         img = cv2.imread(os.path.join(img_root_path, img_name), cv2.IMREAD_COLOR)
-        dst = SegInfere.visual(img)
-        cv2.imwrite(os.path.join(visual_mask_path, img_name), dst)
-        # plt.imshow(dst)
+        seg_res, kp_res = seg_inf.inference(img, crop_size=[587, 402, 384, 384], is_crop=False, is_draw=True)
+        # seg_res, kp_res = seg_inf.inference(img, crop_size=[587, 402, 384, 384], is_crop=True, is_draw=True)
+
+        # dst = SegInfere.visual(img,  is_crop=True)
+        # plt.imshow(seg_res)
         # plt.show()
+        cv2.imwrite(os.path.join(visual_mask_path, img_name), seg_res)

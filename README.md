@@ -32,7 +32,7 @@
 
 - [x] iou metric
 
-- [ ] evaluate
+- [x] evaluate
 
 **模型:**
 
@@ -48,9 +48,19 @@
 
 **基础:**
 
+- [ ] voc_dataset
+
+- [ ] 数据的构造
+
+- [ ] 标签的构造
+
+- [ ] map metric
+
+- [ ] evaluate
 
 **模型:**
 
+- [ ] ssd
 
 ### 单目深度估计
 

@@ -33,6 +33,7 @@ class FCN(nn.Module):
         features = self.encoder.feature_extract(input_tensor)
         feature = features[-1]
         feature = self.decoder(feature)
-        # 上采样
-        feature = F.interpolate(feature, size=size, mode='bilinear', align_corners=False)
+        # 上采样,改成倍率
+        # 其实还有很多什么8x啥的没有补充
+        feature = F.interpolate(feature, scale_factor=32, mode='bilinear', align_corners=False)
         return feature

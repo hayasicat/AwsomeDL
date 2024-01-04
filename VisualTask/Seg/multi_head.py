@@ -1,0 +1,107 @@
+# -*- coding: utf-8 -*-
+# @Time    : 2023/11/14 15:08
+# @Author  : ljq
+# @desc    : 
+# @File    : multi_head.py
+import os
+
+import torch
+from .trainner import SegTrainner
+# from segmentation_models_pytorch.losses.dice import DiceLoss
+from Base.Loss.FocalLoss import MyFocalLoss
+from Base.Loss.DiceLoss import MyDiceLoss
+from Base.Metrics.KP import KPDis
+
+
+class SegMultiHead(SegTrainner):
+
+    def __init__(self, train_dataset, test_dataset, model, class_num=1, save_path=None, resume_path=None, lr=0.001):
+        super().__init__(train_dataset, test_dataset, model, class_num, save_path, resume_path, lr)
+        self.kp_metric = KPDis()
+        self.seg_criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
+        self.dice_loss = MyDiceLoss()
+        # self.dice_loss = DiceLoss('multiclass', smooth=1, from_logits=False)
+        self.kp_criterion = MyFocalLoss(2)  # 平方似乎会比较好点，超参数我觉得应该热力图的部分占比应该高一些
+        # 分类计算
+        # parameter
+        self.optim = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        # 固定lr衰减的策略
+        self.sched = torch.optim.lr_scheduler.MultiStepLR(self.optim, milestones=[50, 80, 120, 140, 160, 180],
+                                                          gamma=0.4)
+
+    def loss(self, pred, seg, heatmap):
+        seg_pred = pred[0]
+        heatmap_pred = pred[1]
+        # 加上了dice loss来约束一下模型方面，收敛的速度还可以。0.47 ->
+        seg_loss = self.criterion(seg_pred, seg)
+        d_loss = self.dice_loss(seg_pred, seg)
+        # 求取heatmap得loss,mean效果实在是太差了
+        # kp_loss = torch.mean((heatmap_pred - heatmap) ** 2)
+        kp_loss = self.kp_criterion(heatmap_pred, heatmap)
+        return 0.5 * seg_loss + 0.5 * d_loss + 10 * kp_loss
+
+    def train(self):
+        if self.epochs % 100 == 0:
+            self.epochs += 1
+        for e in range(self.epochs):
+            total_loss = self.train_step()
+            print('epoch is {}, train_loss is {}'.format(e, sum(total_loss) / (len(total_loss) + 1e-7)))
+            self.sched.step()
+            if e % 10 == 0:
+                self.save_checkpoints(e)
+                text_echo = self.val_step()
+                print('epoch is {}   '.format(e) + text_echo)
+
+    def train_step(self):
+        self.model.train()
+        total_loss = []
+        for imgs, seg, heatmap in self.train_loader:
+            imgs = imgs.to(self.device)
+            seg = seg.to(self.device)
+            heatmap = heatmap.to(self.device)
+            self.optim.zero_grad()
+            pred = self.model(imgs)
+            # 255有效值不变，需要提取边缘得mask码来做
+            train_loss = self.loss(pred, seg, heatmap)
+            train_loss.backward()
+            self.optim.step()
+            total_loss.append(train_loss.detach().cpu().numpy())
+        return total_loss
+
+    @torch.no_grad()
+    def val_step(self):
+        self.model.eval()
+        for imgs, seg, heatmap in self.train_loader:
+            imgs = imgs.to(self.device)
+            seg = seg.to(self.device)
+            heatmap = heatmap.to(self.device)
+            preds = self.model(imgs)
+            seg_preds = preds[0]
+            seg_preds = torch.softmax(seg_preds, dim=1)
+            seg_preds = torch.argmax(seg_preds, dim=1)
+            seg_preds = seg_preds.cpu().numpy()
+
+            kp_preds = preds[1]
+            self.kp_metric.batch_heatmap_dis(kp_preds, heatmap)
+            gt = seg.cpu().numpy()
+            # heat_map先不计算
+            self.metric.batch_miou(seg_preds, gt)
+        # 计算所有的miou
+        miou = self.metric.miou()
+        self.metric.clean()
+        distance = self.kp_metric.distances()
+        text_echo = 'miou: {},distance:{}'.format(miou, distance)
+        self.kp_metric.clearn()
+        return text_echo
+
+    def resume_from(self, model_path):
+        self.model.load_state_dict(torch.load(model_path))
+
+    def save_checkpoints(self, e):
+        self.model.eval()
+        save_name = "{}_model.pth".format(e)
+        if self.is_parallel:
+            model = self.model.module
+        else:
+            model = self.model
+        torch.save(model.state_dict(), os.path.join(self.save_path, save_name))
