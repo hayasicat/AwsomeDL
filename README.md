@@ -18,11 +18,13 @@
 
 - [x] Resnet
 
-- [ ] EfficentNet
+- [x] EfficentNetV2
 
-- [ ] MobileNetV3
+- [x] MobileNetV2
 
 - [ ] vision transformer
+
+- [ ] mpvit
 
 ### 图像分割
 
@@ -39,6 +41,8 @@
 - [x] FCN
 
 - [x] Unet
+
+- [x] FPN
 
 - [ ] deeplabv3
 
@@ -64,10 +68,11 @@
 
 ### 单目深度估计
 
-- [ ] 
+- [ ] monodepth2
 
 ### 图像增强
 
+- [x] mixup
 
 ## 功能支持
 

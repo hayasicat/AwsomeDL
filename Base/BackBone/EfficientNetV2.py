@@ -76,7 +76,7 @@ class FuseMBConv(nn.Module):
 
 
 class ClassHead(nn.Module):
-    def __init__(self, in_ch, out_ch, num_cls, dropout_ratio=0.0):
+    def __init__(self, in_ch, out_ch, num_cls, dropout_ratio=0.3):
         super(ClassHead, self).__init__()
         # TODO: 使用常规的head
         self.num_cls = num_cls
@@ -90,7 +90,7 @@ class ClassHead(nn.Module):
     def forward(self, x):
         x = self.head(x)
         x = x.view(x.size(0), -1)
-        # x = self.dropout(x)
+        x = self.dropout(x)
         return self.fc(x)
 
 
@@ -107,8 +107,8 @@ class EfficientNetV2S(nn.Module):
         # 一共有五层，五层的channel就不一样
         self.channels = [24, 48, 64, 128, 256]
         # 根据数据集的性质来选定block_num 上面这个是cifar100的较优参数
-        # self.block_num = [2, 4, 2, 3, 4, 5]
-        self.block_num = [2, 4, 4, 6, 9, 15]
+        self.block_num = [2, 4, 2, 3, 4, 5]
+        # self.block_num = [2, 4, 4, 6, 9, 15]
         # 拟合能力比较差的话给后面的最后一层来点惊喜
         self.total_block = sum(self.block_num[:4])
         self.current_block = 0
@@ -117,9 +117,9 @@ class EfficientNetV2S(nn.Module):
 
 
         self.expand_ratios = [1, 4, 4, 4, 6, 6]
-        self.strides = [1, 2, 2, 2, 1, 1]
+        self.strides = [1, 2, 2, 2, 2, 1]
         # 小图片去掉stride试试
-        self.ConvStem = Conv3x3(input_chans, self.block_channels[0], stride=1)
+        self.ConvStem = Conv3x3(input_chans, self.block_channels[0], stride=2)
         self.stage1 = self.make_block(self.block_channels[:2], self.block_channels[1:3], self.block_num[:2],
                                       self.expand_ratios[:2],
                                       self.strides[:2], FuseMBConv)

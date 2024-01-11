@@ -24,6 +24,29 @@ class STN(nn.Module):
         return x
 
 
+class PoseDecoder(nn.Module):
+    def __init__(self, encoder):
+        super().__init__()
+        self.encoder = encoder
+        input_channel = self.encoder.channels[-1]
+        self.decoder = nn.Sequential(*[
+            nn.Conv2d(input_channel, 256, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, 1, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, 1, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 6, 1),
+        ])
+
+    def forward(self, input_tensor):
+        features = self.encoder.feature_extract(input_tensor)
+        last_feature = features[-1]
+        out = self.decoder(last_feature)
+        out = out.mean(3).mean(2)
+        return out
+
+
 class MonoDepthSTN(nn.Module):
     # 单目的STN
     """
@@ -39,32 +62,46 @@ class MonoDepthSTN(nn.Module):
         super(MonoDepthSTN, self).__init__()
         self.depth_net = depth_net
         # 6个输入，6个输出
-        self.pose_net = pose_encoder(6, input_chans=6)
+        # TODO: 对齐一下monodepth pose decoder
+        encoder = pose_encoder(6, input_chans=6)
+        self.pose_net = PoseDecoder(encoder)
         # 一开始的初始化都给0
-        self.pose_net.fc.weight.data.zero_()
-        self.model.fc.bias.data.copy_(torch.tensor([0, 0, 0, 0, 0, 0], dtype=torch.float))
+        # self.pose_net.fc.weight.data.zero_()
+        # self.pose_net = encoder
+
+        # self.pose_encoder.fc.bias.data.copy_(torch.tensor([0.001, 0.001, 0.001, 0.001, 0.001, 0.001], dtype=torch.float))
+        # self.pose_encoder.fc.bias.data.copy_(torch.tensor([0.001, 0.001, 0.001, 0.001, 0.001, 0.001], dtype=torch.float))
 
         self.frame_idx = [-1, 0, 1]
         self.prime_name = 'prime'
 
-    def get_pose(self, pre_image, cur_image, next_image):
+    def get_pose(self, pre_image, cur_image):
         # 前后帧
         refer_input = torch.cat([pre_image, cur_image], dim=1)
-        next_input = torch.cat([cur_image, next_image], dim=1)
         # refer才是一个逆变换,以向后变换来说
         refer_trans = self.pose_net(refer_input.to(torch.float32))
-        next_trans = self.pose_net(next_input.to(torch.float32))
-        return refer_trans, next_trans
+        # 对齐一下monodepth2
+        # refer_trans = self.pose_net(refer_input)
+        # 因为后面是 nxn的matrix所以需要reshape一下
+        # @ljq: Z轴和R角值太大导致训不起来，乘以一个固定的系数
+        refer_trans = 0.05 * refer_trans.view(pre_image.size(0), -1, 6)
+        refer_trans[..., -1] = 0.05 * refer_trans[..., -1]
+        refer_trans[..., :3] = 0.05 * refer_trans[..., :3]
+        return refer_trans
 
-    def depth_map(self, inputs):
+    def depth_map(self, cur_images):
         # TODO：输入的图片要归一化，这样子写的也不太灵活
-        depth_maps = self.depth_net(inputs['prime0'].to(torch.float32))
+        depth_maps = self.depth_net(cur_images)
         return depth_maps
 
     def forward(self, pre_image, cur_image, next_image):
         # 姿态估计，后面更改为边佳旺的前后两帧
+        prex_x = (pre_image - 0.45) / 0.225
+        cur_x = (cur_image - 0.45) / 0.225
+        next_x = (next_image - 0.45) / 0.225
 
-        refers_trans, next_trans = self.get_pose(pre_image, cur_image, next_image)
+        refers_pose = self.get_pose(prex_x, cur_x)
+        next_pose = self.get_pose(cur_x, next_x)
         # 跑出一堆多尺度的深度图出来
-        depth_maps = self.depth_map(cur_image)
-        return depth_maps, refers_trans, next_trans
+        depth_maps = self.depth_map(cur_x)
+        return depth_maps, refers_pose, next_pose

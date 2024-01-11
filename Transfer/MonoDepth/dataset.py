@@ -89,7 +89,8 @@ class MonoDataset(data.Dataset):
             inputs[inv_K_name] = inv_K
         for k_name, v_ in inputs.items():
             if 'prime' in k_name:
-                inputs[k_name] = torch.from_numpy(v_).permute(2, 0, 1)
+                # inputs[k_name] = torch.from_numpy(v_).to(torch.float32).permute(2, 0, 1)
+                inputs[k_name] = self.to_tensor(v_)
             else:
                 inputs[k_name] = torch.from_numpy(v_)
         return inputs
