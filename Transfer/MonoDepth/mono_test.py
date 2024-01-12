@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
     data_root = r'/root/project/AwsomeDL/data/BowlingMono'
     train_file_path = os.path.join(data_root, r'bowling/train_files.txt')
-    # train_data = MonoDataset(data_root, train_file_path, 832, 1824)
+    # train_data = MonoDataset(data_root, train_file_path, 416, 896)
     train_data = MonoDataset(data_root, train_file_path, 832, 1824)
     from torch.utils.data import DataLoader
     from Transfer.MonoDepth.MonoUtils.CameraTrans import get_sample_grid, transformation_from_parameters
@@ -54,10 +54,13 @@ if __name__ == "__main__":
     for idx, inputs in enumerate(train_loader):
         if idx <= 12:
             continue
-        image = inputs['prime0_2']
-        image_next = inputs['prime1_2']
-        K = inputs['K_2']
-        inv_K = inputs['inv_K2']
+        image = inputs['prime0_3']
+        image_next = inputs['prime1_3']
+        image_pre = inputs['prime-1_3']
+        K = inputs['K_3']
+        inv_K = inputs['inv_K3']
+        auto_mask = AutoMask()
+        mask = auto_mask.compute_real_project(image, image_next, image_pre)
         fake_depth = torch.ones((image.size(0), 1, image.size(2), image.size(3))) * 5
         # 伪造一个旋转矩阵，和一个转移矩阵
         rot = torch.zeros((1, 1, 3))
@@ -65,7 +68,7 @@ if __name__ == "__main__":
         trans[:, :, 0] = 0.025 * 10
         #
         T = transformation_from_parameters(rot, trans)
-
+        print(T)
         sample_grid = get_sample_grid(fake_depth, K, inv_K, T)
         # 合成一个新视角得图片
         new_image = view_syn(image_next, sample_grid)
@@ -77,7 +80,11 @@ if __name__ == "__main__":
 
         visualReproject(source_loss)
         visualReproject(reproject_loss)
+
+        # automask loss
+        automask_loss = auto_mask(image, image_next, mask)
+        visualReproject(automask_loss)
         print("source:", source_loss.mean())
         print("reproject:", reproject_loss.mean())
-
+        print("automask:", automask_loss.mean())
         break

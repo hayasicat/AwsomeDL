@@ -47,6 +47,14 @@ class PoseDecoder(nn.Module):
         return out
 
 
+class ClippedRelu(nn.Module):
+    def __init__(self):
+        super(ClippedRelu, self).__init__()
+
+    def forward(self, x):
+        return torch.clamp(x, min=-1.0, max=1.0)
+
+
 class MonoDepthSTN(nn.Module):
     # 单目的STN
     """
@@ -74,6 +82,7 @@ class MonoDepthSTN(nn.Module):
 
         self.frame_idx = [-1, 0, 1]
         self.prime_name = 'prime'
+        # self.clamp_relu = ClippedRelu()
 
     def get_pose(self, pre_image, cur_image):
         # 前后帧
@@ -84,9 +93,13 @@ class MonoDepthSTN(nn.Module):
         # refer_trans = self.pose_net(refer_input)
         # 因为后面是 nxn的matrix所以需要reshape一下
         # @ljq: Z轴和R角值太大导致训不起来，乘以一个固定的系数
-        refer_trans = 0.05 * refer_trans.view(pre_image.size(0), -1, 6)
+        # 系数是一个超参的值，调越大训练可能越不稳定
+        refer_trans = 0.1 * refer_trans.view(pre_image.size(0), -1, 6)
         refer_trans[..., -1] = 0.05 * refer_trans[..., -1]
-        refer_trans[..., :3] = 0.05 * refer_trans[..., :3]
+        refer_trans[..., :3] = 0.01 * refer_trans[..., :3]
+        # 防止超出
+        # refer_trans[..., 3:] = torch.clamp(refer_trans[..., 3:], min=-1.0, max=1.0)
+        # 给一个物理意义
         return refer_trans
 
     def depth_map(self, cur_images):
@@ -104,4 +117,5 @@ class MonoDepthSTN(nn.Module):
         next_pose = self.get_pose(cur_x, next_x)
         # 跑出一堆多尺度的深度图出来
         depth_maps = self.depth_map(cur_x)
-        return depth_maps, refers_pose, next_pose
+        # 从大大小深度图
+        return depth_maps[::-1], refers_pose, next_pose
