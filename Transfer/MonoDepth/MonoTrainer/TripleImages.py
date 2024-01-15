@@ -6,6 +6,7 @@
 import time
 import torch
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 
 # 导入损失函数
 from Transfer.MonoDepth.MonoUtils import disp_to_depth, view_syn, MonoViewer
@@ -32,7 +33,7 @@ class TripleTrainer():
         # 训练
         self.train_loader = DataLoader(train_dataset, self.batch_size)
         self.opt = torch.optim.Adam([{'params': model.depth_net.parameters()},
-                                     {'params': model.pose_net.parameters(), 'lr': 3 * 1e-4}], lr=5 * 1e-4,
+                                     {'params': model.pose_net.parameters(), 'lr':  1e-4}], lr=5 * 1e-4,
                                     weight_decay=5e-4)
         self.sched = torch.optim.lr_scheduler.MultiStepLR(
             self.opt, milestones=[66, 88, 166], gamma=0.5)
@@ -52,11 +53,15 @@ class TripleTrainer():
 
     def compute_loss(self, depth_maps, inputs, refers_trans, next_trans, cur_epoch=0):
         total_loss = 0
+        cur_images = [inputs['prime0_{}'.format(i)] for i in range(len(depth_maps))]
+        pre_images = [inputs['prime-1_{}'.format(i)] for i in range(len(depth_maps))]
+        next_images = [inputs['prime1_{}'.format(i)] for i in range(len(depth_maps))]
+
         for scale in range(0, len(depth_maps)):
             # 取不同层次的图片
-            cur_image = inputs['prime0_{}'.format(scale)]
-            pre_image = inputs['prime-1_{}'.format(scale)]
-            next_image = inputs['prime1_{}'.format(scale)]
+            cur_image = cur_images[scale]
+            pre_image = pre_images[scale]
+            next_image = next_images[scale]
             K = inputs['K_{}'.format(scale)]
             inv_K = inputs['inv_K{}'.format(scale)]
 
@@ -71,11 +76,59 @@ class TripleTrainer():
             mask = self.auto_mask.compute_real_project(cur_image, pre_image, next_image)
             pre_losses = self.auto_mask(pre2cur, cur_image, mask)
             next_losses = self.auto_mask(next2cur, cur_image, mask)
+
             # 底层监督高层
+            # TODO： 因为一张图所以对全部做mean，之后肯定是在batch size的维度保持一直的。dim 应该是1
             current_loss = pre_losses.mean() + next_losses.mean() + self.s_weight * self.s_loss(depth_map, cur_image)
+            res = 3
+            # 套壳一层缩放看看
+            # if scale < 3:
+            #     cur_image = cur_images[res]
+            #     pre_image = pre_images[res]
+            #     next_image = next_images[res]
+            #     K = inputs['K_{}'.format(res)]
+            #     inv_K = inputs['inv_K{}'.format(res)]
+            #
+            #     down_factor = (0.5) ** (res - scale)
+            #     down_sample_depth = F.interpolate(depth_map, scale_factor=down_factor, mode='nearest')
+            #     _, depth = disp_to_depth(down_sample_depth, self.min_depth, self.max_depth)
+            #     refers_grid = get_sample_grid(depth, K, inv_K, refers_trans)
+            #     next_grid = get_sample_grid(depth, K, inv_K, next_trans)
+            #     # TODO: 姿态估计跳到0之后就起不来了，但是如果只是底层两层的特征图的话还是能起得来的
+            #     # TODO: 观察到的现象是姿态估计没有快速收敛和稳定以后很容易造成波动，然后带着深度预测一起波动。本来已经接近于0.3了谁聊到搏动了
+            #     pre2cur = view_syn(pre_image, refers_grid)
+            #     next2cur = view_syn(next_image, next_grid)
+            #     mask = self.auto_mask.compute_real_project(cur_image, pre_image, next_image)
+            #     pre_losses = self.auto_mask(pre2cur, cur_image, mask)
+            #     next_losses = self.auto_mask(next2cur, cur_image, mask)
+            #
+            #     down_sample_loss = pre_losses.mean() + next_losses.mean() + self.s_weight * self.s_loss(
+            #         down_sample_depth, cur_image)
+            #     current_loss = 0.7 * current_loss + 0.3 * down_sample_loss
             total_loss += current_loss
             print("第{}epoch，第{}层输出,loss为{}".format(cur_epoch, scale, current_loss))
         return total_loss
+
+    def compute_depth_geometry_consistency(self, depth_maps):
+        """
+        如果加上多个层级的loss会导致输出一直被抑制为0，导致更难收敛，本来是希望有个正向的作用，反倒是有往坏的发展
+        :param depth_maps:
+        :return:
+        """
+        depth_consistency_loss = 0
+        for i in range(len(depth_maps) - 1):
+            cur_depth = depth_maps[i]
+            next_depth = depth_maps[i + 1]
+            down_sample_depth = F.interpolate(cur_depth, scale_factor=0.5, mode='bilinear')
+            # 限制一下
+            # _, down_sample_depth = disp_to_depth(down_sample_depth, self.min_depth, self.max_depth)
+            # _, next_depth = disp_to_depth(next_depth, self.min_depth, self.max_depth)
+
+            cur_loss = (next_depth - down_sample_depth) ** 2
+            depth_consistency_loss += cur_loss.mean()
+            print("第{}层输出,loss为{}".format(i, cur_loss.mean()))
+        print("总的深度差异为{}".format(depth_consistency_loss))
+        return depth_consistency_loss
 
     def train_step(self):
         for idx, inputs in enumerate(self.train_loader):
@@ -90,15 +143,25 @@ class TripleTrainer():
                 depth_maps, refers_pose, next_pose = self.model(pre_image_0, cur_image_0, next_image_0)
 
                 print(next_pose[..., 3:], refers_pose[..., 3:])
+                geometry_loss = self.compute_depth_geometry_consistency(depth_maps)
 
                 refers_trans = transformation_from_parameters(refers_pose[..., :3], refers_pose[..., 3:], True)
                 next_trans = transformation_from_parameters(next_pose[..., :3], next_pose[..., 3:])
                 total_loss = self.compute_loss(depth_maps, inputs, refers_trans, next_trans, i)
                 print(total_loss)
+                # 几何一致性+ 变换损失，强行约束最上层的深度图收敛
+                # TODO: 深度图确实比较一致了，但是解决不了unstable的问题
+                total_loss = 0.97 * total_loss + 0.03 * geometry_loss
+                print(total_loss)
                 self.opt.zero_grad()
                 total_loss.backward()
                 self.opt.step()
                 # self.sched.step()
+            self.visual_result(inputs)
+            break
+
+    def save_checkpoint(self):
+        pass
 
     def visual_result(self, input_info):
         cur_image = input_info['prime0_0']
