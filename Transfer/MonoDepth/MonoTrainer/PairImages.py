@@ -9,7 +9,7 @@ import torch
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
-from Transfer.MonoDepth.MonoUtils import disp_to_depth, view_syn, MonoViewer
+from Transfer.MonoDepth.MonoUtils import disp_to_depth, view_syn, MonoPloter, MonoViewer
 from Transfer.MonoDepth.Losses.Loss import ReprojectLoss, EdgeSmoothLoss, AutoMask
 from Transfer.MonoDepth.MonoUtils.CameraTrans import transformation_from_parameters, get_sample_grid
 
@@ -43,9 +43,13 @@ class PairTrainer():
         # 一般用这个auto_mask来替代
         self.auto_mask = AutoMask()
         self.model = model
-        self.viewer = MonoViewer([self.min_depth, self.max_depth])
+        # self.viewer = MonoPloter([self.min_depth, self.max_depth])
+        # 限制
+        self.viewer = MonoViewer(self.model, self.min_depth, self.max_depth, using_sc_depth=True)
         self.is_parallel = False
-        self.save_path = '/root/project/AwsomeDL/data/monodepth'
+        self.save_path = '/root/project/AwsomeDL/data/sc_depth'
+        if not os.path.exists(self.save_path):
+            os.makedirs(self.save_path)
 
     def train(self):
         for i in range(self.epochs):
@@ -55,14 +59,14 @@ class PairTrainer():
 
     def compute_loss(self, cur_depth_map, refers_depth_maps, inputs, pose_trans, inv_trans):
         # 重建图片，然后计算loss
-        total_loss = 0
+        total_loss = []
         cur_images = [inputs['prime0_{}'.format(i)] for i in range(len(cur_depth_map))]
         pre_images = [inputs['prime-1_{}'.format(i)] for i in range(len(cur_depth_map))]
         next_images = [inputs['prime1_{}'.format(i)] for i in range(len(cur_depth_map))]
 
         refers_images = [pre_images, next_images]
-
-        for scale in range(0, len(cur_depth_map)):
+        weights = [0.25, 0.25, 0.3, 0.3]
+        for scale in range(3, len(cur_depth_map)):
 
             K = inputs['K_{}'.format(scale)]
             inv_K = inputs['inv_K{}'.format(scale)]
@@ -71,7 +75,7 @@ class PairTrainer():
             diff_depth_losses = []
             smooth_losses = []
 
-            for idx, pose_t, inv_pose_t in zip(range(len(cur_depth_map)), pose_trans, inv_trans):
+            for idx, pose_t, inv_pose_t in zip(range(len(pose_trans)), pose_trans, inv_trans):
                 # 将深度图给缩放到准确的区域
                 _, cur_depth = disp_to_depth(cur_depth_map[scale], self.min_depth, self.max_depth)
                 _, refer_depth = disp_to_depth(refers_depth_maps[idx][scale], self.min_depth, self.max_depth)
@@ -80,6 +84,9 @@ class PairTrainer():
                 # 计算变换
                 photo_loss_r2c, diff_depth_r2c = compute_pair_loss(cur_img, refer_img, cur_depth, refer_depth, pose_t,
                                                                    K, inv_K)
+
+                # photo_loss_r2c, diff_depth_r2c = compute_pair_loss(cur_img, refer_img, cur_depth, refer_depth, pose_t,
+                #                                                    K, inv_K)
                 photo_losses.append(photo_loss_r2c)
                 diff_depth_losses.append(diff_depth_r2c)
 
@@ -92,11 +99,12 @@ class PairTrainer():
                 smooth_losses.append(self.edge_smooth_l(cur_depth_map[scale], cur_img))
             # 保持当前的批梯度
             photo_l = torch.cat(photo_losses, dim=1).mean([1, 2, 3])
-            # diff_l = torch.cat(diff_depth_losses, dim=1).mean([1, 2, 3])
+            diff_l = torch.cat(diff_depth_losses, dim=1).mean([1, 2, 3])
             smooth_l = torch.cat(smooth_losses, dim=1).mean([1])
             # print(photo_l, diff_l, smooth_l)
-            total_loss += photo_l
-        return total_loss
+            total_loss.append(photo_l + self.s_weight * smooth_l + 0.1 * diff_l)
+
+        return sum(total_loss)
 
     def train_step(self):
         for idx, inputs in enumerate(self.train_loader):
@@ -108,15 +116,14 @@ class PairTrainer():
                 next_image_0 = inputs['prime1_0']
 
                 # 参数变换
-                cur_depth_map, refers_depth_maps, pose_forward, pose_inv = self.model(cur_image_0,
-                                                                                      [pre_image_0, next_image_0])
-                print([p[..., 3:] for p in pose_forward])
-                print([p[..., 3:] for p in pose_inv])
+                refers_images = [pre_image_0]
+                cur_depth_map, refers_depth_maps, pose_forward, pose_inv = self.model(cur_image_0, refers_images)
+
                 pose_trans = [transformation_from_parameters(p[..., :3], p[..., 3:]) for p in pose_forward]
                 inv_trans = [transformation_from_parameters(p[..., :3], p[..., 3:]) for p in pose_inv]
 
+                print([p for p in pose_forward])
                 total_loss = self.compute_loss(cur_depth_map, refers_depth_maps, inputs, pose_trans, inv_trans)
-                print(total_loss)
                 # 几何一致性+ 变换损失，强行约束最上层的深度图收敛
                 # TODO: 深度图确实比较一致了，但是解决不了unstable的问题
                 total_loss = total_loss
@@ -126,8 +133,32 @@ class PairTrainer():
                 self.opt.step()
                 # self.sched.step()
             self.visual_result(inputs)
-            self.save_checkpoint(10)
+            self.save_checkpoint(20)
             break
+
+    def save_checkpoint(self, e):
+        self.model.eval()
+        save_name = "{}_model.pth".format(e)
+        if self.is_parallel:
+            model = self.model.module
+        else:
+            model = self.model
+        torch.save(model.state_dict(), os.path.join(self.save_path, save_name))
+
+    def visual_result(self, inputs):
+        self.viewer.update_model(self.model)
+        self.viewer.visual_syn_image(inputs, is_show_next=False, start_scale=2)
+
+    def analys(self):
+        for idx, inputs in enumerate(self.train_loader):
+            if idx < 12:
+                continue
+            self.visual_result(inputs)
+            break
+
+    def resume_from(self, model_path):
+        self.model.load_state_dict(torch.load(model_path))
+        print("resum from {}".format(model_path))
 
 
 reproject_loss = ReprojectLoss()
@@ -157,7 +188,15 @@ def compute_pair_loss(cur_img, refer_img, cur_depth, refer_depth, pose_trans, K,
     diff_depth = (compute_depth - syn_cur_depth).abs() / (compute_depth + syn_cur_depth)
     # 计算掩码
     weight_mask = (1 - diff_depth)
+    print(weight_mask.sum())
     # 计算loss
     photo_loss = reproject_loss(syn_cur, cur_img)
     photo_loss *= weight_mask
     return photo_loss, diff_depth
+
+
+def compute_origin_loss(cur_img, refer_img, cur_depth, refer_depth, pose_trans, K, inv_K):
+    refers_grid, compute_depth = get_sample_grid(cur_depth, K, inv_K, pose_trans)
+    project_img = view_syn(refer_img, refers_grid)
+    photo_loss = reproject_loss(project_img, cur_img)
+    return photo_loss

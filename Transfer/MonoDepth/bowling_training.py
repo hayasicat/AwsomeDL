@@ -23,14 +23,14 @@ depth_decoder = DepthDecoder(encoder.channels)
 depth_net = DepthNet(encoder, depth_decoder)
 # TODO: monodepth2预测出来的是两张图片两张深度，但是我这边就直接两张图片一个姿态
 
-# model = MonoDepthSTN(depth_net, ResNet18)
-# trainer = TripleTrainer(train_data, model)
-# trainer.train()
+model = MonoDepthSTN(depth_net, ResNet18)
+trainer = TripleTrainer(train_data, model)
+trainer.train()
 
 # sc_depth方式训练
-model = MonoDepthPair(depth_net, ResNet18)
-trainer = PairTrainer(train_data, model)
-trainer.train()
+# model = MonoDepthPair(depth_net, ResNet18)
+# trainer = PairTrainer(train_data, model)
+# trainer.train()
 
 # 分析一下结果
 # model_path = r'/root/project/AwsomeDL/data/monodepth/10_model.pth'
@@ -38,5 +38,7 @@ trainer.train()
 # model_path = r'/root/project/AwsomeDL/data/monodepth/geometry_consistance.pth'
 #
 # #
+# pair-model
+# model_path = r'/root/project/AwsomeDL/data/sc_depth/20_model.pth'
 # trainer.resume_from(model_path)
 # trainer.analys()

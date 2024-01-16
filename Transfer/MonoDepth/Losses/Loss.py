@@ -88,7 +88,7 @@ class AutoMask(_Loss):
             # print(losses.size(), torch.sum(losses, [1, 2]).size())
             # print(torch.sum(losses, [1, 2]), torch.sum(true_mask, [1, 2]))
             losses = torch.sum(losses, [1, 2], keepdim=True) / (torch.sum(true_mask, [1, 2], keepdim=True) + 1e-8)
-        return losses.mean(2).mean(1)
+        return losses.mean([1, 2])
 
     def analyze(self, pre_pred, cur_image, mask):
         reprojection_loss = self.loss_backend(pre_pred, cur_image)

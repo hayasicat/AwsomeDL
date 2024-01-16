@@ -72,13 +72,12 @@ class MonoDepthSTN(nn.Module):
         # 6个输入，6个输出
         # TODO: 对齐一下monodepth pose decoder
         encoder = pose_encoder(6, input_chans=6)
-        self.pose_net = PoseDecoder(encoder)
+        # self.pose_net = PoseDecoder(encoder)
         # 一开始的初始化都给0
+        self.pose_net = encoder
         # self.pose_net.fc.weight.data.zero_()
-        # self.pose_net = encoder
-
-        # self.pose_encoder.fc.bias.data.copy_(torch.tensor([0.001, 0.001, 0.001, 0.001, 0.001, 0.001], dtype=torch.float))
-        # self.pose_encoder.fc.bias.data.copy_(torch.tensor([0.001, 0.001, 0.001, 0.001, 0.001, 0.001], dtype=torch.float))
+        # self.pose_net.fc.bias.data.copy_(torch.tensor([0.001, 0.001, 0.001, 0.001, 0.001, 0.001], dtype=torch.float))
+        # self.pose_net.fc.bias.data.copy_(torch.tensor([0.001, 0.001, 0.001, 0.001, 0.001, 0.001], dtype=torch.float))
 
         self.frame_idx = [-1, 0, 1]
         self.prime_name = 'prime'
@@ -106,7 +105,7 @@ class MonoDepthSTN(nn.Module):
     def depth_map(self, cur_images):
         # TODO：输入的图片要归一化，这样子写的也不太灵活
         depth_maps = self.depth_net(cur_images)
-        return depth_maps
+        return depth_maps[::-1]
 
     def forward(self, pre_image, cur_image, next_image, *args, **kwargs):
         # 姿态估计，后面更改为边佳旺的前后两帧
@@ -119,7 +118,7 @@ class MonoDepthSTN(nn.Module):
         # 跑出一堆多尺度的深度图出来
         depth_maps = self.depth_map(cur_x)
         # 从大大小深度图
-        return depth_maps[::-1], refers_pose, next_pose
+        return depth_maps, refers_pose, next_pose
 
 
 class MonoDepthPair(MonoDepthSTN):
@@ -134,13 +133,13 @@ class MonoDepthPair(MonoDepthSTN):
         pose = []
         pose_inv = []
         refers_depth_maps = []
-        cur_depth_map = self.depth_map(cur_x)[::-1]
+        cur_depth_map = self.depth_map(cur_x)
 
         # 正向姿态和逆向姿态
         for x in refers_x:
             pose.append(self.get_pose(cur_x, x))
             pose_inv.append(self.get_pose(x, cur_x))
             # 深度图
-            refers_depth_maps.append(self.depth_net(x)[::-1])
+            refers_depth_maps.append(self.depth_net(x))
 
         return cur_depth_map, refers_depth_maps, pose, pose_inv

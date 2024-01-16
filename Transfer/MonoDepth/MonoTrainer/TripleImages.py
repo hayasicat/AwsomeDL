@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
 # 导入损失函数
-from Transfer.MonoDepth.MonoUtils import disp_to_depth, view_syn, MonoViewer
+from Transfer.MonoDepth.MonoUtils import disp_to_depth, view_syn, MonoPloter
 from Transfer.MonoDepth.Losses.Loss import ReprojectLoss, EdgeSmoothLoss, AutoMask
 from Transfer.MonoDepth.MonoUtils.CameraTrans import transformation_from_parameters, get_sample_grid
 
@@ -44,7 +44,7 @@ class TripleTrainer():
         # 一般用这个auto_mask来替代
         self.auto_mask = AutoMask()
         self.model = model
-        self.viewer = MonoViewer([self.min_depth, self.max_depth])
+        self.viewer = MonoPloter([self.min_depth, self.max_depth])
         self.is_parallel = False
         self.save_path = '/root/project/AwsomeDL/data/monodepth'
 
@@ -54,8 +54,10 @@ class TripleTrainer():
             # 测试的适合暂时不用
             # self.sched.step()
 
-    def compute_loss(self, depth_maps, inputs, refers_trans, next_trans, cur_epoch=0):
-        total_loss = 0
+    def compute_loss(self, depth_maps, inputs, refers_trans, next_trans, cur_epoch=0, start_scale=0):
+        total_loss = []
+        # TODOL
+        weight_step_multi = 1.5
         cur_images = [inputs['prime0_{}'.format(i)] for i in range(len(depth_maps))]
         pre_images = [inputs['prime-1_{}'.format(i)] for i in range(len(depth_maps))]
         next_images = [inputs['prime1_{}'.format(i)] for i in range(len(depth_maps))]
@@ -65,7 +67,7 @@ class TripleTrainer():
         # if cur_epoch < 40:
         #     start_idx = 2
 
-        for scale in range(0, len(depth_maps)):
+        for scale in range(start_scale, len(depth_maps)):
             # 取不同层次的图片
             cur_image = cur_images[scale]
             pre_image = pre_images[scale]
@@ -85,14 +87,19 @@ class TripleTrainer():
 
             pre_losses = self.auto_mask(pre2cur, cur_image, mask)
             next_losses = self.auto_mask(next2cur, cur_image, mask)
-
+            # 如果不加auto mask的话也根本训不起来的。很蛋疼
+            # pre_losses = self.g_loss(pre2cur, cur_image).mean([1,2,3])
+            # next_losses = self.g_loss(next2cur, cur_image).mean([1,2,3])
+            # print(pre_losses.mean([1,2,3]))
             # 底层监督高层
             # TODO： 因为一张图所以对全部做mean，之后肯定是在batch size的维度保持一直的。dim 应该是1
             current_loss = pre_losses + next_losses + self.s_weight * self.s_loss(
                 depth_map, cur_image)
-            total_loss += current_loss
+            # total_loss += current_loss
+            total_loss.append(current_loss)
             print("第{}epoch，第{}层输出,loss为{}".format(cur_epoch, scale, current_loss))
-        return total_loss
+        result_loss = sum([l * idx * weight_step_multi for idx, l in enumerate(total_loss)])
+        return result_loss
 
     def compute_depth_geometry_consistency(self, depth_maps):
         """
@@ -100,6 +107,8 @@ class TripleTrainer():
         :return:
         """
         depth_consistency_loss = 0
+        # TODO: 我怀疑最上层的原因在于提前收束以后开始反复横跳导致的
+
         for i in range(len(depth_maps) - 1):
             cur_depth = depth_maps[i]
             next_depth = depth_maps[i + 1]
