@@ -3,6 +3,7 @@
 # @Author  : ljq
 # @desc    : 
 # @File    : TripleImages.py
+import os
 import time
 import torch
 from torch.utils.data import DataLoader
@@ -33,7 +34,7 @@ class TripleTrainer():
         # 训练
         self.train_loader = DataLoader(train_dataset, self.batch_size)
         self.opt = torch.optim.Adam([{'params': model.depth_net.parameters()},
-                                     {'params': model.pose_net.parameters(), 'lr':  1e-4}], lr=5 * 1e-4,
+                                     {'params': model.pose_net.parameters(), 'lr': 1e-4}], lr=5 * 1e-4,
                                     weight_decay=5e-4)
         self.sched = torch.optim.lr_scheduler.MultiStepLR(
             self.opt, milestones=[66, 88, 166], gamma=0.5)
@@ -44,6 +45,8 @@ class TripleTrainer():
         self.auto_mask = AutoMask()
         self.model = model
         self.viewer = MonoViewer([self.min_depth, self.max_depth])
+        self.is_parallel = False
+        self.save_path = '/root/project/AwsomeDL/data/monodepth'
 
     def train(self):
         for i in range(self.epochs):
@@ -57,6 +60,11 @@ class TripleTrainer():
         pre_images = [inputs['prime-1_{}'.format(i)] for i in range(len(depth_maps))]
         next_images = [inputs['prime1_{}'.format(i)] for i in range(len(depth_maps))]
 
+        # TODO: 说明即使在底层对姿态估计训练到稳定了，加入上层还是变化幅度很大，实际上还是大尺度的特征图还是有问题的
+        # start_idx = 0
+        # if cur_epoch < 40:
+        #     start_idx = 2
+
         for scale in range(0, len(depth_maps)):
             # 取不同层次的图片
             cur_image = cur_images[scale]
@@ -67,51 +75,27 @@ class TripleTrainer():
 
             depth_map = depth_maps[scale]
             _, depth = disp_to_depth(depth_map, self.min_depth, self.max_depth)
-            refers_grid = get_sample_grid(depth, K, inv_K, refers_trans)
-            next_grid = get_sample_grid(depth, K, inv_K, next_trans)
+            refers_grid, _ = get_sample_grid(depth, K, inv_K, refers_trans)
+            next_grid, _ = get_sample_grid(depth, K, inv_K, next_trans)
             # TODO: 姿态估计跳到0之后就起不来了，但是如果只是底层两层的特征图的话还是能起得来的
 
             pre2cur = view_syn(pre_image, refers_grid)
             next2cur = view_syn(next_image, next_grid)
             mask = self.auto_mask.compute_real_project(cur_image, pre_image, next_image)
+
             pre_losses = self.auto_mask(pre2cur, cur_image, mask)
             next_losses = self.auto_mask(next2cur, cur_image, mask)
 
             # 底层监督高层
             # TODO： 因为一张图所以对全部做mean，之后肯定是在batch size的维度保持一直的。dim 应该是1
-            current_loss = pre_losses.mean() + next_losses.mean() + self.s_weight * self.s_loss(depth_map, cur_image)
-            res = 3
-            # 套壳一层缩放看看
-            # if scale < 3:
-            #     cur_image = cur_images[res]
-            #     pre_image = pre_images[res]
-            #     next_image = next_images[res]
-            #     K = inputs['K_{}'.format(res)]
-            #     inv_K = inputs['inv_K{}'.format(res)]
-            #
-            #     down_factor = (0.5) ** (res - scale)
-            #     down_sample_depth = F.interpolate(depth_map, scale_factor=down_factor, mode='nearest')
-            #     _, depth = disp_to_depth(down_sample_depth, self.min_depth, self.max_depth)
-            #     refers_grid = get_sample_grid(depth, K, inv_K, refers_trans)
-            #     next_grid = get_sample_grid(depth, K, inv_K, next_trans)
-            #     # TODO: 姿态估计跳到0之后就起不来了，但是如果只是底层两层的特征图的话还是能起得来的
-            #     # TODO: 观察到的现象是姿态估计没有快速收敛和稳定以后很容易造成波动，然后带着深度预测一起波动。本来已经接近于0.3了谁聊到搏动了
-            #     pre2cur = view_syn(pre_image, refers_grid)
-            #     next2cur = view_syn(next_image, next_grid)
-            #     mask = self.auto_mask.compute_real_project(cur_image, pre_image, next_image)
-            #     pre_losses = self.auto_mask(pre2cur, cur_image, mask)
-            #     next_losses = self.auto_mask(next2cur, cur_image, mask)
-            #
-            #     down_sample_loss = pre_losses.mean() + next_losses.mean() + self.s_weight * self.s_loss(
-            #         down_sample_depth, cur_image)
-            #     current_loss = 0.7 * current_loss + 0.3 * down_sample_loss
+            current_loss = pre_losses + next_losses + self.s_weight * self.s_loss(
+                depth_map, cur_image)
             total_loss += current_loss
             print("第{}epoch，第{}层输出,loss为{}".format(cur_epoch, scale, current_loss))
         return total_loss
 
     def compute_depth_geometry_consistency(self, depth_maps):
         """
-        如果加上多个层级的loss会导致输出一直被抑制为0，导致更难收敛，本来是希望有个正向的作用，反倒是有往坏的发展
         :param depth_maps:
         :return:
         """
@@ -124,9 +108,9 @@ class TripleTrainer():
             # _, down_sample_depth = disp_to_depth(down_sample_depth, self.min_depth, self.max_depth)
             # _, next_depth = disp_to_depth(next_depth, self.min_depth, self.max_depth)
 
-            cur_loss = (next_depth - down_sample_depth) ** 2
-            depth_consistency_loss += cur_loss.mean()
-            print("第{}层输出,loss为{}".format(i, cur_loss.mean()))
+            cur_loss = torch.abs(next_depth - down_sample_depth) / (next_depth + down_sample_depth)
+            depth_consistency_loss += cur_loss.squeeze(1).mean(2).mean(1)
+            print("第{}层输出,loss为{}".format(i, cur_loss.squeeze(1).mean([1, 2])))
         print("总的深度差异为{}".format(depth_consistency_loss))
         return depth_consistency_loss
 
@@ -148,20 +132,32 @@ class TripleTrainer():
                 refers_trans = transformation_from_parameters(refers_pose[..., :3], refers_pose[..., 3:], True)
                 next_trans = transformation_from_parameters(next_pose[..., :3], next_pose[..., 3:])
                 total_loss = self.compute_loss(depth_maps, inputs, refers_trans, next_trans, i)
+
                 print(total_loss)
                 # 几何一致性+ 变换损失，强行约束最上层的深度图收敛
                 # TODO: 深度图确实比较一致了，但是解决不了unstable的问题
-                total_loss = 0.97 * total_loss + 0.03 * geometry_loss
+                total_loss = 0.95 * total_loss + 0.05 * geometry_loss
                 print(total_loss)
                 self.opt.zero_grad()
                 total_loss.backward()
                 self.opt.step()
                 # self.sched.step()
             self.visual_result(inputs)
+            self.save_checkpoint(10)
             break
 
-    def save_checkpoint(self):
-        pass
+    def save_checkpoint(self, e):
+        self.model.eval()
+        save_name = "{}_model.pth".format(e)
+        if self.is_parallel:
+            model = self.model.module
+        else:
+            model = self.model
+        torch.save(model.state_dict(), os.path.join(self.save_path, save_name))
+
+    def resume_from(self, model_path):
+        self.model.load_state_dict(torch.load(model_path))
+        print("resum from {}".format(model_path))
 
     def visual_result(self, input_info):
         cur_image = input_info['prime0_0']
@@ -175,8 +171,8 @@ class TripleTrainer():
         mask = self.auto_mask.compute_real_project(cur_image, pre_image, next_image)
         _, depth = disp_to_depth(depth_maps[0], self.min_depth, self.max_depth)
 
-        refers_grid = get_sample_grid(depth, K, inv_K, refers_trans)
-        next_grid = get_sample_grid(depth, K, inv_K, next_trans)
+        refers_grid, _ = get_sample_grid(depth, K, inv_K, refers_trans)
+        next_grid, _ = get_sample_grid(depth, K, inv_K, next_trans)
 
         pre2cur = view_syn(pre_image, refers_grid)
         next2cur = view_syn(next_image, next_grid)
@@ -186,10 +182,20 @@ class TripleTrainer():
         self.viewer.show_image_tensor(cur_image * 255)
         self.viewer.show_image_tensor(next_image * 255)
 
-        next_loss = self.auto_mask(next2cur, cur_image, mask)
+        next_loss, idx = self.auto_mask.analyze(next2cur, cur_image, mask)
+        mean_loss = next_loss.mean(2).mean(1)
+        loss_map_from = F.one_hot(idx, num_classes=3) * 255
+        loss_map_from = loss_map_from.squeeze(0).permute(2, 0, 1)
+
+        mask = torch.min(mask, dim=1)[0] < 0.03
+
+        self.viewer.show_reproject_loss(mask)
+
+        self.viewer.show_reproject_loss(loss_map_from)
         self.viewer.show_reproject_loss(next_loss)
 
         next_loss = self.g_loss(next2cur, cur_image)
+
         self.viewer.show_reproject_loss(next_loss)
 
         # next_loss = g_loss(next_image_0, cur_image_0)
@@ -203,3 +209,10 @@ class TripleTrainer():
             time.sleep(0.1)
         print(next_pose, next_trans)
         print(refers_pose.size(), next_pose.size())
+
+    def analys(self):
+        for idx, inputs in enumerate(self.train_loader):
+            if idx < 12:
+                continue
+            self.visual_result(inputs)
+            break

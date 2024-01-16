@@ -36,7 +36,8 @@ def get_sample_grid(depth, K, inv_K, T):
     pix_coords_t[..., 0] /= w - 1
     pix_coords_t[..., 1] /= h - 1
     pix_coords = (pix_coords_t - 0.5) * 2
-    return pix_coords
+    # 变换后相机坐标
+    return pix_coords, cam_points_t[:, 2, :].view(b, 1, h, w)
 
 
 def transformation_from_parameters(axisangle, translation, invert=False):

@@ -108,7 +108,7 @@ class MonoDepthSTN(nn.Module):
         depth_maps = self.depth_net(cur_images)
         return depth_maps
 
-    def forward(self, pre_image, cur_image, next_image):
+    def forward(self, pre_image, cur_image, next_image, *args, **kwargs):
         # 姿态估计，后面更改为边佳旺的前后两帧
         prex_x = (pre_image - 0.45) / 0.225
         cur_x = (cur_image - 0.45) / 0.225
@@ -120,3 +120,27 @@ class MonoDepthSTN(nn.Module):
         depth_maps = self.depth_map(cur_x)
         # 从大大小深度图
         return depth_maps[::-1], refers_pose, next_pose
+
+
+class MonoDepthPair(MonoDepthSTN):
+
+    def __init__(self, depth_net, pose_encoder):
+        super(MonoDepthPair, self).__init__(depth_net, pose_encoder)
+
+    def forward(self, cur_image, refers_images, *args, **kwargs):
+        cur_x = (cur_image - 0.45) / 0.225
+        refers_x = [(img - 0.45) / 0.225 for img in refers_images]
+
+        pose = []
+        pose_inv = []
+        refers_depth_maps = []
+        cur_depth_map = self.depth_map(cur_x)[::-1]
+
+        # 正向姿态和逆向姿态
+        for x in refers_x:
+            pose.append(self.get_pose(cur_x, x))
+            pose_inv.append(self.get_pose(x, cur_x))
+            # 深度图
+            refers_depth_maps.append(self.depth_net(x)[::-1])
+
+        return cur_depth_map, refers_depth_maps, pose, pose_inv

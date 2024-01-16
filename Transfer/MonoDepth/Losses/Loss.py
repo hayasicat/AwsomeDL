@@ -48,7 +48,8 @@ class EdgeSmoothLoss(_Loss):
         grad_img_y = torch.mean(torch.abs(img[:, :, :-1, :] - img[:, :, 1:, :]), 1, keepdim=True)
         grad_disp_x *= torch.exp(-grad_img_x)
         grad_disp_y *= torch.exp(-grad_img_y)
-        return grad_disp_x.mean() + grad_disp_y.mean()
+        # 批维度要有
+        return grad_disp_x.mean([2, 3]) + grad_disp_y.mean([2, 3])
 
 
 class AutoMask(_Loss):
@@ -74,9 +75,23 @@ class AutoMask(_Loss):
         mask += torch.randn(mask.shape, device=self.device) * 0.00001
         return mask
 
-    def forward(self, pre_pred, cur_image, mask):
+    def forward(self, pre_pred, cur_image, mask, using_papers=False):
         # 用不同的loss来约束
         reprojection_loss = self.loss_backend(pre_pred, cur_image)
         combined = torch.cat((mask, reprojection_loss), dim=1)
         losses, idx = torch.min(combined, dim=1)
-        return losses
+        # 受用auto mask的机制是不可行的，因为弱纹理区域的auto mask相乘的结果是等于0的
+        if using_papers:
+            # 0-1之间实在是太死了，输出的结果确实不太好
+            true_mask = idx == 2
+            losses *= true_mask
+            # print(losses.size(), torch.sum(losses, [1, 2]).size())
+            # print(torch.sum(losses, [1, 2]), torch.sum(true_mask, [1, 2]))
+            losses = torch.sum(losses, [1, 2], keepdim=True) / (torch.sum(true_mask, [1, 2], keepdim=True) + 1e-8)
+        return losses.mean(2).mean(1)
+
+    def analyze(self, pre_pred, cur_image, mask):
+        reprojection_loss = self.loss_backend(pre_pred, cur_image)
+        combined = torch.cat((mask, reprojection_loss), dim=1)
+        losses, idx = torch.min(combined, dim=1)
+        return losses, idx
