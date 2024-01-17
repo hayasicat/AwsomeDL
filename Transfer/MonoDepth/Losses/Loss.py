@@ -53,12 +53,11 @@ class EdgeSmoothLoss(_Loss):
 
 
 class AutoMask(_Loss):
-    def __init__(self, use_auto_mask=True, use_multi_scale=False, device=torch.device("cpu")):
+    def __init__(self, use_auto_mask=True, use_multi_scale=False):
         super().__init__()
         self.use_auto_mask = use_auto_mask
         self.use_multi_scale = use_multi_scale
         self.loss_backend = ReprojectLoss()
-        self.device = device
 
     def compute_real_project(self, cur_images, pre_images, next_images):
         """
@@ -72,7 +71,7 @@ class AutoMask(_Loss):
         identity_reprojection_losses.append(self.loss_backend(pre_images, cur_images))
         identity_reprojection_losses.append(self.loss_backend(next_images, cur_images))
         mask = torch.cat(identity_reprojection_losses, 1)
-        mask += torch.randn(mask.shape, device=self.device) * 0.00001
+        mask += torch.randn(mask.shape, device=cur_images.device) * 0.00001
         return mask
 
     def forward(self, pre_pred, cur_image, mask, using_papers=False):
@@ -95,3 +94,7 @@ class AutoMask(_Loss):
         combined = torch.cat((mask, reprojection_loss), dim=1)
         losses, idx = torch.min(combined, dim=1)
         return losses, idx
+
+    def without_mask(self, pre_pred, cur_image):
+        reprojection_loss = self.loss_backend(pre_pred, cur_image)
+        return reprojection_loss

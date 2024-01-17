@@ -87,7 +87,7 @@ class MonoDepthSTN(nn.Module):
         # 前后帧
         refer_input = torch.cat([pre_image, cur_image], dim=1)
         # refer才是一个逆变换,以向后变换来说
-        refer_trans = self.pose_net(refer_input.to(torch.float32))
+        refer_trans = self.pose_net(refer_input)
         # 对齐一下monodepth2
         # refer_trans = self.pose_net(refer_input)
         # 因为后面是 nxn的matrix所以需要reshape一下

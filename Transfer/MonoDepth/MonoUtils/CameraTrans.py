@@ -18,10 +18,10 @@ def get_sample_grid(depth, K, inv_K, T):
     b, c, h, w = depth.size()
     Y, X = torch.meshgrid(torch.arange(0, float(depth.size(2))),
                           torch.arange(0, float(depth.size(3))))  # 输出的是Y,X 排序一下
-    pixel_coord = torch.stack([X, Y, torch.ones_like(X)]).view(3, -1)
+    pixel_coord = torch.stack([X, Y, torch.ones_like(X)]).view(3, -1).to(K.device)
 
     cam_points = torch.matmul(inv_K[:, :3, :3], pixel_coord)  # 4X4需要去掉最后一个维度
-    ones_vec = torch.ones_like(depth).view(depth.size(0), 1, -1)
+    ones_vec = torch.ones_like(depth).view(depth.size(0), 1, -1).to(K.device)
     cam_points = depth.view(depth.size(0), 1, -1) * cam_points
     world_points = torch.cat([cam_points, ones_vec], 1)
 

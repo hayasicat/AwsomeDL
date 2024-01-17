@@ -60,6 +60,15 @@ class LastDepthHead(nn.Module):
         return x
 
 
+class Relu1(nn.Module):
+    def __init__(self, inplace=True):
+        super(Relu1, self).__init__()
+        self.inplace = inplace
+
+    def forward(self, input):
+        return F.relu6(input) / 6
+
+
 class DepthDecoder(nn.Module):
     def __init__(self, channels=[64, 128, 256, 512], use_skips=True):
         super().__init__()

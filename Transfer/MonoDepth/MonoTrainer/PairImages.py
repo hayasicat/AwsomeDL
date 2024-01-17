@@ -42,7 +42,10 @@ class PairTrainer():
         self.edge_smooth_l = EdgeSmoothLoss()
         # 一般用这个auto_mask来替代
         self.auto_mask = AutoMask()
+        self.device = torch.device("cuda")
+
         self.model = model
+        self.model = self.model.to(self.device)
         # self.viewer = MonoPloter([self.min_depth, self.max_depth])
         # 限制
         self.viewer = MonoViewer(self.model, self.min_depth, self.max_depth, using_sc_depth=True)
@@ -65,7 +68,6 @@ class PairTrainer():
         next_images = [inputs['prime1_{}'.format(i)] for i in range(len(cur_depth_map))]
 
         refers_images = [pre_images, next_images]
-        weights = [0.25, 0.25, 0.3, 0.3]
         for scale in range(3, len(cur_depth_map)):
 
             K = inputs['K_{}'.format(scale)]
@@ -108,6 +110,8 @@ class PairTrainer():
 
     def train_step(self):
         for idx, inputs in enumerate(self.train_loader):
+            for key, ipt in inputs.items():
+                inputs[key] = ipt.to(self.device)
             if idx < 12:
                 continue
             for i in range(100):
@@ -144,6 +148,7 @@ class PairTrainer():
         else:
             model = self.model
         torch.save(model.state_dict(), os.path.join(self.save_path, save_name))
+        self.model.train()
 
     def visual_result(self, inputs):
         self.viewer.update_model(self.model)
@@ -153,6 +158,8 @@ class PairTrainer():
         for idx, inputs in enumerate(self.train_loader):
             if idx < 12:
                 continue
+            for key, ipt in inputs.items():
+                inputs[key] = ipt.to(self.device)
             self.visual_result(inputs)
             break
 
