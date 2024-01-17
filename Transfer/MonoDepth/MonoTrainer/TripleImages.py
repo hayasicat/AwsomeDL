@@ -67,7 +67,7 @@ class TripleTrainer():
             # 测试的适合暂时不用
             # self.sched.step()
 
-    def compute_loss(self, depth_maps, inputs, refers_trans, next_trans, cur_epoch=0, start_scale=0):
+    def compute_loss(self, depth_maps, inputs, refers_trans, next_trans, cur_epoch=0, start_scale=2):
         total_loss = []
         # TODOL
         cur_images = [inputs['prime0_{}'.format(i)] for i in range(len(depth_maps))]
@@ -104,56 +104,6 @@ class TripleTrainer():
             print("第{}epoch，第{}层输出,loss为{}".format(cur_epoch, scale, current_loss))
         return sum(total_loss)
 
-    def top_and_bottom_loss(self, depth_maps, inputs, refers_trans, next_trans, cur_epoch=0, start_scale=0):
-        #
-        cur_images = [inputs['prime0_{}'.format(i)] for i in range(len(depth_maps))]
-        pre_images = [inputs['prime-1_{}'.format(i)] for i in range(len(depth_maps))]
-        next_images = [inputs['prime1_{}'.format(i)] for i in range(len(depth_maps))]
-        Ks = [inputs['K_{}'.format(i)] for i in range(len(depth_maps))]
-        inv_Ks = [inputs['inv_K{}'.format(i)] for i in range(len(depth_maps))]
-
-        # 最上层的loss和最下层的loss
-        top_total_loss = []
-        bottom_total_loss = []
-        top_mask = self.auto_mask.compute_real_project(cur_images[0], pre_images[0], next_images[0])
-        bottom_mask = self.auto_mask.compute_real_project(cur_images[-1], pre_images[-1], next_images[-1])
-
-        for scale in range(start_scale, len(depth_maps)):
-            depth_map = depth_maps[scale]
-            upscale_ = 2 ** scale
-            dowscale_ = 0.5 ** (len(depth_maps) - 1 - scale)
-            # 最终计算结果
-            upper_depth_map = F.interpolate(depth_map, scale_factor=upscale_, mode='bilinear')
-            down_depth_map = F.interpolate(depth_map, scale_factor=dowscale_, mode='bilinear')
-            # 视角合成和计算loss
-            top_loss = self.compute_photo_loss(cur_images[0], pre_images[0], next_images[0], upper_depth_map,
-                                               refers_trans, next_trans, Ks[0], inv_Ks[0], top_mask)
-            bottom_loss = self.compute_photo_loss(cur_images[-1], pre_images[-1], next_images[-1], down_depth_map,
-                                                  refers_trans, next_trans, Ks[-1], inv_Ks[-1], bottom_mask)
-            top_total_loss.append(top_loss)
-            bottom_total_loss.append(bottom_loss)
-        # 随便进行相加
-        print("第{}epoch，最大尺度loss为{}".format(cur_epoch, top_total_loss))
-        print("第{}epoch，最小尺度loss为{}".format(cur_epoch, bottom_total_loss))
-        # 相加在一块
-        return sum(top_total_loss) + sum(bottom_total_loss)
-
-    def compute_photo_loss(self, cur_image, pre_image, next_image, depth_map, refers_trans, next_trans, K, inv_K, mask):
-        _, depth = disp_to_depth(depth_map, self.min_depth, self.max_depth)
-        refers_grid, _ = get_sample_grid(depth, K, inv_K, refers_trans)
-        next_grid, _ = get_sample_grid(depth, K, inv_K, next_trans)
-        pre2cur = view_syn(pre_image, refers_grid)
-        next2cur = view_syn(next_image, next_grid)
-        pre_losses = self.auto_mask(pre2cur, cur_image, mask)
-        next_losses = self.auto_mask(next2cur, cur_image, mask)
-        # 如果不加auto mask的话也根本训不起来的。很蛋疼
-
-        # 底层监督高层
-        # TODO： 因为一张图所以对全部做mean，之后肯定是在batch size的维度保持一直的。dim 应该是1
-        current_loss = pre_losses + next_losses + self.s_weight * self.s_loss(
-            depth_map, cur_image)
-        return current_loss
-
     def compute_depth_geometry_consistency(self, depth_maps):
         """
         :param depth_maps:
@@ -163,7 +113,6 @@ class TripleTrainer():
         # TODO: 我怀疑最上层的原因在于提前收束以后开始反复横跳导致的
         for i in range(len(depth_maps) - 1):
             cur_depth = depth_maps[i]
-
             next_depth = depth_maps[i + 1]
             down_sample_depth = F.interpolate(cur_depth, scale_factor=0.5, mode='bilinear')
             # 限制一下
@@ -177,7 +126,7 @@ class TripleTrainer():
     def train_step(self):
         for i in range(100):
             self.model.train()
-            for idx, inputs in enumerate(self.train_loader):
+            for idx, inputs in enumerate(self.sample_loader):
                 for key, ipt in inputs.items():
                     inputs[key] = ipt.to(self.device)
                 if idx < 12:
@@ -191,17 +140,16 @@ class TripleTrainer():
                 depth_maps, refers_pose, next_pose = self.model(pre_image_0, cur_image_0, next_image_0)
 
                 print(next_pose[..., 3:], refers_pose[..., 3:])
-                # geometry_loss = self.compute_depth_geometry_consistency(depth_maps)
+                geometry_loss = self.compute_depth_geometry_consistency(depth_maps)
 
                 refers_trans = transformation_from_parameters(refers_pose[..., :3], refers_pose[..., 3:], True)
                 next_trans = transformation_from_parameters(next_pose[..., :3], next_pose[..., 3:])
-                # depth_loss = self.compute_loss(depth_maps, inputs, refers_trans, next_trans, i)
-                depth_loss = self.top_and_bottom_loss(depth_maps, inputs, refers_trans, next_trans, i)
+                depth_loss = self.compute_loss(depth_maps, inputs, refers_trans, next_trans, i)
 
                 print(depth_loss)
                 # 几何一致性+ 变换损失，强行约束最上层的深度图收敛
                 # TODO: 深度图确实比较一致了，但是解决不了unstable的问题
-                total_loss = depth_loss
+                total_loss = 0.85 * depth_loss + 0.03 * geometry_loss
                 # 优化姿态的optimizer，计算姿态的loss，一般是底层比较大，高层比较小，大概是一个1/2的衰减
 
                 self.opt.zero_grad()
@@ -211,12 +159,14 @@ class TripleTrainer():
             if i % 30 == 0:
                 self.save_checkpoint('temp_' + str(i))
                 # self.sched.step()
+        self.save_checkpoint(10)
         for idx, inputs in enumerate(self.sample_loader):
+            for key, ipt in inputs.items():
+                inputs[key] = ipt.to(self.device)
             if idx < 12:
                 continue
             self.model.eval()
             self.visual_result(inputs)
-            self.save_checkpoint(10)
 
     def save_checkpoint(self, e):
         self.model.eval()

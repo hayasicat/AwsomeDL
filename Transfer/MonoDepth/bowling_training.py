@@ -36,12 +36,14 @@ trainer.train()
 # trainer.train()
 
 # 分析一下结果
-model_path = r'/root/project/AwsomeDL/data/monodepth/total_fragment.pth'
+# model_path = r'/root/project/AwsomeDL/data/monodepth/total_fragment.pth'
+model_path = r'/root/project/AwsomeDL/data/monodepth/temp_90_model.pth'
+
 # model_path = r'/root/project/AwsomeDL/data/monodepth/bucket_model.pth'
 # model_path = r'/root/project/AwsomeDL/data/monodepth/geometry_consistance.pth'
 #
 # #
 # pair-model
 # model_path = r'/root/project/AwsomeDL/data/sc_depth/20_model.pth'
-trainer.resume_from(model_path)
-trainer.analys()
+# trainer.resume_from(model_path)
+# trainer.analys()

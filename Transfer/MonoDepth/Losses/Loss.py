@@ -18,7 +18,7 @@ class ReprojectLoss(_Loss):
         super().__init__()
         self.has_ssim = has_ssim
         if has_ssim:
-            self.ssim = SSIM()
+            self.ssim = SSIM(3)
 
     def forward(self, pred, target):
         abs_diff = torch.abs(pred - target)
