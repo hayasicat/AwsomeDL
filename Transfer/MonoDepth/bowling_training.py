@@ -24,13 +24,20 @@ train_file_path = os.path.join(data_root, r'bowling/train_files.txt')
 # train_data = MonoDataset(data_root, train_file_path, 832, 1824)
 train_data = MonoDataset(data_root, train_file_path, 416, 896, coor_shift=[16, 0])
 
+# 相比于姿态估计网络，backbone换轻量级的倒是比较无所谓
+# encoder = EfficientNetV2S(10, input_chans=3)
 
 encoder = ResNet34(10, input_chans=3)
+# encoder = ResNet18(10, input_chans=3)
+
 depth_decoder = DepthDecoder(encoder.channels)
 depth_net = DepthNet(encoder, depth_decoder)
 # TODO: monodepth2预测出来的是两张图片两张深度，但是我这边就直接两张图片一个姿态
 
+# 不能那比较难收敛的轻量级网络来训姿态估计网络
+# model = MonoDepthSTN(depth_net, ResNet18)
 model = MonoDepthSTN(depth_net, ResNet18)
+
 trainer = TripleTrainer(train_data, model)
 trainer.train()
 

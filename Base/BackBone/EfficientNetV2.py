@@ -76,22 +76,24 @@ class FuseMBConv(nn.Module):
 
 
 class ClassHead(nn.Module):
-    def __init__(self, in_ch, out_ch, num_cls, dropout_ratio=0.3):
+    def __init__(self, in_ch, out_ch, num_cls, dropout_ratio=0.1):
         super(ClassHead, self).__init__()
         # TODO: 使用常规的head
         self.num_cls = num_cls
         self.head = nn.Sequential(*[
             nn.AdaptiveAvgPool2d((1, 1)),
-            PointWiseConv(in_ch, out_ch, act=nn.Hardswish)
+            PointWiseConv(in_ch, out_ch, act=nn.ReLU)
         ])
+        # self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        # self.fc1 = nn.Linear(in_ch, out_ch)
         self.dropout = nn.Dropout(dropout_ratio)
-        self.fc = nn.Linear(out_ch, num_cls)
+        self.fc2 = nn.Linear(out_ch, num_cls)
 
     def forward(self, x):
+
         x = self.head(x)
-        x = x.view(x.size(0), -1)
         x = self.dropout(x)
-        return self.fc(x)
+        return self.fc2(x)
 
 
 class EfficientNetV2S(nn.Module):
@@ -114,7 +116,6 @@ class EfficientNetV2S(nn.Module):
         self.current_block = 0
         self.max_drop_ratio = max_drop_ratio
         # self.block_num = [1, 2, 2, 3, 3, 1]
-
 
         self.expand_ratios = [1, 4, 4, 4, 6, 6]
         self.strides = [1, 2, 2, 2, 2, 1]

@@ -18,7 +18,7 @@ from Transfer.MonoDepth.MonoUtils.CameraTrans import transformation_from_paramet
 class TripleTrainer():
     weight_decay = 5e-4
     epochs = 1
-    batch_size = 1
+    batch_size = 4
     num_workers = 4
     multi_scales = 4
     s_weight = 1e-3
@@ -38,19 +38,20 @@ class TripleTrainer():
             self.resume_from(model_path)
         self.model = self.model.to(self.device)
 
-        self.train_loader = DataLoader(train_dataset, self.batch_size, shuffle=True)
+        self.train_loader = DataLoader(train_dataset, self.batch_size, shuffle=True, num_workers=4)
 
         self.sample_loader = DataLoader(train_dataset, self.batch_size)
 
-        self.opt = torch.optim.Adam([{'params': self.model.depth_net.parameters()},
-                                     {'params': self.model.pose_net.parameters(), 'lr': 1e-4}], lr=5 * 1e-4,
-                                    weight_decay=5e-4)
+        # self.opt = torch.optim.Adam([{'params': self.model.depth_net.parameters()},
+        #                              {'params': self.model.pose_net.parameters(), 'lr': 1e-4}], lr=5 * 1e-4,
+        #                             weight_decay=5e-4)
         # 分批更新梯度
         self.pose_opt = torch.optim.Adam(self.model.pose_net.parameters(), lr=1e-4, weight_decay=5e-4)
         self.depth_net_opt = torch.optim.Adam(self.model.depth_net.parameters(), lr=5e-4, weight_decay=5e-4)
 
+        # 深度估计的质量很大程度取决于pose net的估计值
         self.sched = torch.optim.lr_scheduler.MultiStepLR(
-            self.opt, milestones=[80, 166], gamma=0.5)
+            self.pose_opt, milestones=[80, 166], gamma=0.3)
 
         self.g_loss = ReprojectLoss()
         self.s_loss = EdgeSmoothLoss()
@@ -66,6 +67,14 @@ class TripleTrainer():
             self.train_step()
             # 测试的适合暂时不用
             # self.sched.step()
+            if i % 30 == 0:
+                self.save_checkpoint(i)
+                # for idx, inputs in enumerate(self.sample_loader):
+                #     for key, ipt in inputs.items():
+                #         inputs[key] = ipt.to(self.device)
+                #     self.model.eval()
+                #     self.visual_result(inputs)
+                #     break
 
     def compute_loss(self, depth_maps, inputs, refers_trans, next_trans, cur_epoch=0, start_scale=0):
         total_loss = []
@@ -82,9 +91,9 @@ class TripleTrainer():
             #
             # else:
             #     trans_size = 3
+            # if scale > 2:
+            #     trans_size = 2
 
-            if scale > 2:
-                trans_size = 2
             cur_image = cur_images[trans_size]
             pre_image = pre_images[trans_size]
             next_image = next_images[trans_size]
@@ -115,7 +124,7 @@ class TripleTrainer():
                 depth_map, cur_image)
             # total_loss += current_loss
             total_loss.append(current_loss)
-            print("第{}epoch，第{}层输出,loss为{}".format(cur_epoch, scale, current_loss))
+            # print("第{}epoch，第{}层输出,loss为{}".format(cur_epoch, scale, current_loss))
         # weights = [0.1, 0.2, 0.3, 0.4]
         weights = [0.1, 0.1, 0.3, 0.5]
 
@@ -137,58 +146,42 @@ class TripleTrainer():
             _, next_depth = disp_to_depth(next_depth, self.min_depth, self.max_depth)
             cur_loss = torch.abs(down_sample_depth - next_depth) / (down_sample_depth + next_depth)
             depth_consistency_loss.append(cur_loss.squeeze(1).mean([1, 2]))
-            print("第{}层输出,loss为{}".format(i, cur_loss.squeeze(1).mean([1, 2])))
+            # print("第{}层输出,loss为{}".format(i, cur_loss.squeeze(1).mean([1, 2])))
         return sum(depth_consistency_loss)
 
     def train_step(self):
         self.model.train()
-        for idx, inputs in enumerate(self.sample_loader):
-
+        for idx, inputs in enumerate(self.train_loader):
             for key, ipt in inputs.items():
                 inputs[key] = ipt.to(self.device)
-            if idx < 12:
-                continue
-            for i in range(100):
+            cur_image_0 = inputs['prime0_0']
+            pre_image_0 = inputs['prime-1_0']
+            next_image_0 = inputs['prime1_0']
+            # 参数变换
+            depth_maps, refers_pose, next_pose = self.model(pre_image_0, cur_image_0, next_image_0)
 
-                cur_image_0 = inputs['prime0_0']
-                pre_image_0 = inputs['prime-1_0']
-                next_image_0 = inputs['prime1_0']
+            geometry_loss = self.compute_depth_geometry_consistency(depth_maps)
 
-                # 参数变换
-                depth_maps, refers_pose, next_pose = self.model(pre_image_0, cur_image_0, next_image_0)
+            refers_trans = transformation_from_parameters(refers_pose[..., :3], refers_pose[..., 3:], True)
+            next_trans = transformation_from_parameters(next_pose[..., :3], next_pose[..., 3:])
+            depth_loss = self.compute_loss(depth_maps, inputs, refers_trans, next_trans, i)
 
-                print(next_pose[..., 3:], refers_pose[..., 3:])
-                geometry_loss = self.compute_depth_geometry_consistency(depth_maps)
+            # 几何一致性+ 变换损失，强行约束最上层的深度图收敛
+            # TODO: 深度图确实比较一致了，但是解决不了unstable的问题
+            # total_loss = 1 * depth_loss
+            print(depth_loss, geometry_loss)
+            total_loss = (0.97 * depth_loss + 0.03 * geometry_loss).mean()
+            print(total_loss)
+            # 优化姿态的optimizer，计算姿态的loss，一般是底层比较大，高层比较小，大概是一个1/2的衰减
 
-                refers_trans = transformation_from_parameters(refers_pose[..., :3], refers_pose[..., 3:], True)
-                next_trans = transformation_from_parameters(next_pose[..., :3], next_pose[..., 3:])
-                depth_loss = self.compute_loss(depth_maps, inputs, refers_trans, next_trans, i)
-
-                print(depth_loss)
-                print(geometry_loss)
-                # 几何一致性+ 变换损失，强行约束最上层的深度图收敛
-                # TODO: 深度图确实比较一致了，但是解决不了unstable的问题
-                # total_loss = 1 * depth_loss
-                total_loss = 0.97 * depth_loss +0.03 *geometry_loss
-
-                # 优化姿态的optimizer，计算姿态的loss，一般是底层比较大，高层比较小，大概是一个1/2的衰减
-
-                self.opt.zero_grad()
-                total_loss.backward()
-                self.opt.step()
-                if i % 30 == 0:
-                    self.save_checkpoint('temp_' + str(i))
-                self.sched.step()
-            break
-        self.save_checkpoint(10)
-        for idx, inputs in enumerate(self.sample_loader):
-            for key, ipt in inputs.items():
-                inputs[key] = ipt.to(self.device)
-            if idx < 12:
-                continue
-            self.model.eval()
-            self.visual_result(inputs)
-            break
+            # self.opt.zero_grad()
+            self.pose_opt.zero_grad()
+            self.depth_net_opt.zero_grad()
+            total_loss.backward()
+            # self.opt.step()
+            self.pose_opt.step()
+            self.depth_net_opt.step()
+            self.sched.step()
 
     def save_checkpoint(self, e):
         self.model.eval()
@@ -213,7 +206,7 @@ class TripleTrainer():
     def analys(self):
         for idx, inputs in enumerate(self.sample_loader):
 
-            if idx < 12:
+            if idx < 60:
                 continue
             for key, ipt in inputs.items():
                 inputs[key] = ipt.to(self.device)

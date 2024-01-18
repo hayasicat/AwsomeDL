@@ -28,6 +28,7 @@ class MonoDataset(data.Dataset):
         """
         self.frame_index = [-1, 0, 1]  # 实际上是[0,-1,1]
         self.reset_input_image_size(height, width, coor_shift[0], coor_shift[1])
+        self.coor_shift = coor_shift
         self.is_train = is_train
         self.img_ext = img_ext
         self.height = height
@@ -57,6 +58,9 @@ class MonoDataset(data.Dataset):
     def get_color(self, folder, frame_index):
         image_path = os.path.join(self.data_root, folder, str(frame_index) + self.img_ext)
         img = cv2.imread(image_path, cv2.IMREAD_COLOR)
+        end_y = img.shape[0]-self.coor_shift[1]
+        end_x = img.shape[1] - self.coor_shift[0]
+        img = img[self.coor_shift[1]:end_y, self.coor_shift[0]:end_x, :]
         return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     def __len__(self):

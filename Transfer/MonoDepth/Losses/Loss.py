@@ -49,7 +49,7 @@ class EdgeSmoothLoss(_Loss):
         grad_disp_x *= torch.exp(-grad_img_x)
         grad_disp_y *= torch.exp(-grad_img_y)
         # 批维度要有
-        return grad_disp_x.mean([2, 3]) + grad_disp_y.mean([2, 3])
+        return grad_disp_x.mean([1, 2, 3]) + grad_disp_y.mean([1, 2, 3])
 
 
 class AutoMask(_Loss):
