@@ -120,7 +120,7 @@ class MonoViewer():
                 self.plotter.show_image_tensor(source_images[frame_id][s] * 255)
                 self.plotter.show_image_tensor(source2target * 255)
                 # 可视化结果
-                self.plotter.show_depth(depth)
+                self.plotter.show_depth(depth, False)
                 if self.using_sc_depth:
                     self.show_diff_map(grids, computed_depth, refer_depths[frame_id][s])
                 if self.using_auto_mask:

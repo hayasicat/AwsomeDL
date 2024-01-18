@@ -14,18 +14,20 @@ from torchvision import transforms
 
 
 class MonoDataset(data.Dataset):
-    K = np.array([[0.53, 0, 0.5, 0],
-                  [0, 1.16, 0.61, 0],
+    K = np.array([[0.532, 0, 0.501, 0],
+                  [0, 1.168, 0.611, 0],
                   [0, 0, 1, 0],
                   [0, 0, 0, 1]], dtype=np.float32)
     org_height = 832
     org_width = 1824
 
-    def __init__(self, data_root, image_file, height, width, num_scale=4, is_train=True, img_ext='.png'):
+    def __init__(self, data_root, image_file, height, width, num_scale=4, is_train=True, img_ext='.png',
+                 coor_shift=[0, 0]):
         """
         image_file: subfold_path idx  -> os.path.join(data_root,subfold_path+'/'+str(idx)+img_ext)
         """
         self.frame_index = [-1, 0, 1]  # 实际上是[0,-1,1]
+        self.reset_input_image_size(height, width, coor_shift[0], coor_shift[1])
         self.is_train = is_train
         self.img_ext = img_ext
         self.height = height
@@ -37,12 +39,20 @@ class MonoDataset(data.Dataset):
         for i in range(self.num_scale):
             s = 2 ** i
             self.resize_trans[i] = transforms.Resize((self.height // s, self.width // s))
-        # 比例缩放到相关的尺寸里面
-        self.K[0, :] *= width / float(self.org_width)
-        self.K[1, :] *= height / float(self.org_height)
-
         # 全部都转换为torch tensor
         self.to_tensor = transforms.ToTensor()
+
+    def reset_input_image_size(self, height, width, x_shift, y_shift):
+        Kx = self.K[0, :] * self.org_width
+        Ky = self.K[1, :] * self.org_height
+        Kx[2] = Kx[2] - x_shift
+        Ky[2] = Ky[2] - y_shift
+        # 进行缩放
+        Kx = Kx / (self.org_width - 2 * x_shift)
+        Ky = Ky / (self.org_height - 2 * y_shift)
+
+        self.K[0, :] = Kx
+        self.K[1, :] = Ky
 
     def get_color(self, folder, frame_index):
         image_path = os.path.join(self.data_root, folder, str(frame_index) + self.img_ext)
@@ -99,13 +109,15 @@ class MonoDataset(data.Dataset):
 if __name__ == "__main__":
     r = r'/root/project/AwsomeDL/data/BowlingMono'
     f_p = os.path.join(r, r'bowling/train_files.txt')
-    d = MonoDataset(r, f_p, 832, 1824)
+    d = MonoDataset(r, f_p, 416, 896, coor_shift=[16, 0])
+    # d = MonoDataset(r, f_p, 832, 1824)
+
     o = d[0]
     from torch.utils.data import DataLoader
 
     for k, v in o.items():
-        print(k, v.shape)
-    l = DataLoader(d, 2)
-    for o in l:
-        for k, v in o.items():
-            print(k, v.shape, v.dtype)
+        print(k, v.shape, v)
+    # l = DataLoader(d, 2)
+    # for o in l:
+    #     for k, v in o.items():
+    #         print(k, v.shape, v.dtype)

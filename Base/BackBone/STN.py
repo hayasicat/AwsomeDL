@@ -95,8 +95,8 @@ class MonoDepthSTN(nn.Module):
         # 系数是一个超参的值，调越大训练可能越不稳定
         # 系数是一个超参数的值，越大的话更容易控制姿态网络的一个跳变幅度，这样子的结果更容易保证一个姿态输出的稳定性
         refer_trans = 0.1 * refer_trans.view(pre_image.size(0), -1, 6)
-        refer_trans[..., -1] = 0.05 * refer_trans[..., -1]
-        refer_trans[..., :3] = 0.01 * refer_trans[..., :3]
+        refer_trans[..., -1] = 0.5 * refer_trans[..., -1]
+        refer_trans[..., :3] = 0.1 * refer_trans[..., :3]
         # 防止超出
         # refer_trans[..., 3:] = torch.clamp(refer_trans[..., 3:], min=-1.0, max=1.0)
         # 给一个物理意义

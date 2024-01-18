@@ -50,7 +50,7 @@ class TripleTrainer():
         self.depth_net_opt = torch.optim.Adam(self.model.depth_net.parameters(), lr=5e-4, weight_decay=5e-4)
 
         self.sched = torch.optim.lr_scheduler.MultiStepLR(
-            self.opt, milestones=[66, 88, 166], gamma=0.5)
+            self.opt, milestones=[80, 166], gamma=0.5)
 
         self.g_loss = ReprojectLoss()
         self.s_loss = EdgeSmoothLoss()
@@ -67,7 +67,7 @@ class TripleTrainer():
             # 测试的适合暂时不用
             # self.sched.step()
 
-    def compute_loss(self, depth_maps, inputs, refers_trans, next_trans, cur_epoch=0, start_scale=2):
+    def compute_loss(self, depth_maps, inputs, refers_trans, next_trans, cur_epoch=0, start_scale=0):
         total_loss = []
         # TODOL
         cur_images = [inputs['prime0_{}'.format(i)] for i in range(len(depth_maps))]
@@ -75,13 +75,27 @@ class TripleTrainer():
         next_images = [inputs['prime1_{}'.format(i)] for i in range(len(depth_maps))]
         for scale in range(start_scale, len(depth_maps)):
             # 取不同层次的图片
-            cur_image = cur_images[scale]
-            pre_image = pre_images[scale]
-            next_image = next_images[scale]
-            K = inputs['K_{}'.format(scale)]
-            inv_K = inputs['inv_K{}'.format(scale)]
+            trans_size = scale
+            # if scale <= 1:
+            #     # trans_size = scale + 1
+            #     trans_size = scale + 2
+            #
+            # else:
+            #     trans_size = 3
+
+            if scale > 2:
+                trans_size = 2
+            cur_image = cur_images[trans_size]
+            pre_image = pre_images[trans_size]
+            next_image = next_images[trans_size]
+            K = inputs['K_{}'.format(trans_size)]
+            inv_K = inputs['inv_K{}'.format(trans_size)]
 
             depth_map = depth_maps[scale]
+            # 对特征图进行上采样
+            if trans_size != scale:
+                depth_map = F.interpolate(depth_map, scale_factor=2 ** (scale - trans_size), mode='bilinear')
+
             _, depth = disp_to_depth(depth_map, self.min_depth, self.max_depth)
             refers_grid, _ = get_sample_grid(depth, K, inv_K, refers_trans)
             next_grid, _ = get_sample_grid(depth, K, inv_K, next_trans)
@@ -102,7 +116,10 @@ class TripleTrainer():
             # total_loss += current_loss
             total_loss.append(current_loss)
             print("第{}epoch，第{}层输出,loss为{}".format(cur_epoch, scale, current_loss))
-        return sum(total_loss)
+        # weights = [0.1, 0.2, 0.3, 0.4]
+        weights = [0.1, 0.1, 0.3, 0.5]
+
+        return sum([w * l for w, l in zip(weights, total_loss)])
 
     def compute_depth_geometry_consistency(self, depth_maps):
         """
@@ -116,21 +133,22 @@ class TripleTrainer():
             next_depth = depth_maps[i + 1]
             down_sample_depth = F.interpolate(cur_depth, scale_factor=0.5, mode='bilinear')
             # 限制一下
-            # _, down_sample_depth = disp_to_depth(down_sample_depth, self.min_depth, self.max_depth)
-            # _, next_depth = disp_to_depth(next_depth, self.min_depth, self.max_depth)
+            _, down_sample_depth = disp_to_depth(down_sample_depth, self.min_depth, self.max_depth)
+            _, next_depth = disp_to_depth(next_depth, self.min_depth, self.max_depth)
             cur_loss = torch.abs(down_sample_depth - next_depth) / (down_sample_depth + next_depth)
             depth_consistency_loss.append(cur_loss.squeeze(1).mean([1, 2]))
             print("第{}层输出,loss为{}".format(i, cur_loss.squeeze(1).mean([1, 2])))
         return sum(depth_consistency_loss)
 
     def train_step(self):
-        for i in range(100):
-            self.model.train()
-            for idx, inputs in enumerate(self.sample_loader):
-                for key, ipt in inputs.items():
-                    inputs[key] = ipt.to(self.device)
-                if idx < 12:
-                    continue
+        self.model.train()
+        for idx, inputs in enumerate(self.sample_loader):
+
+            for key, ipt in inputs.items():
+                inputs[key] = ipt.to(self.device)
+            if idx < 12:
+                continue
+            for i in range(100):
 
                 cur_image_0 = inputs['prime0_0']
                 pre_image_0 = inputs['prime-1_0']
@@ -147,18 +165,21 @@ class TripleTrainer():
                 depth_loss = self.compute_loss(depth_maps, inputs, refers_trans, next_trans, i)
 
                 print(depth_loss)
+                print(geometry_loss)
                 # 几何一致性+ 变换损失，强行约束最上层的深度图收敛
                 # TODO: 深度图确实比较一致了，但是解决不了unstable的问题
-                total_loss = 0.85 * depth_loss + 0.03 * geometry_loss
+                # total_loss = 1 * depth_loss
+                total_loss = 0.97 * depth_loss +0.03 *geometry_loss
+
                 # 优化姿态的optimizer，计算姿态的loss，一般是底层比较大，高层比较小，大概是一个1/2的衰减
 
                 self.opt.zero_grad()
                 total_loss.backward()
                 self.opt.step()
-                break
-            if i % 30 == 0:
-                self.save_checkpoint('temp_' + str(i))
-                # self.sched.step()
+                if i % 30 == 0:
+                    self.save_checkpoint('temp_' + str(i))
+                self.sched.step()
+            break
         self.save_checkpoint(10)
         for idx, inputs in enumerate(self.sample_loader):
             for key, ipt in inputs.items():
@@ -167,6 +188,7 @@ class TripleTrainer():
                 continue
             self.model.eval()
             self.visual_result(inputs)
+            break
 
     def save_checkpoint(self, e):
         self.model.eval()
@@ -176,6 +198,7 @@ class TripleTrainer():
         else:
             model = self.model
         torch.save(model.state_dict(), os.path.join(self.save_path, save_name))
+        self.model.train()
 
     def resume_from(self, model_path):
         self.model.load_state_dict(torch.load(model_path))

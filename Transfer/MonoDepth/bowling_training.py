@@ -17,9 +17,13 @@ from Base.BackBone.ResNet import ResNet18, ResNet34
 from Base.SegHead.DepthHead import DepthDecoder, DepthNet
 
 data_root = r'/root/project/AwsomeDL/data/BowlingMono'
+# data_root = r'/root/project/AwsomeDL/data/BowlingMonoNew'
+
 train_file_path = os.path.join(data_root, r'bowling/train_files.txt')
 # train_data = MonoDataset(data_root, train_file_path, 416, 896)
-train_data = MonoDataset(data_root, train_file_path, 832, 1824)
+# train_data = MonoDataset(data_root, train_file_path, 832, 1824)
+train_data = MonoDataset(data_root, train_file_path, 416, 896, coor_shift=[16, 0])
+
 
 encoder = ResNet34(10, input_chans=3)
 depth_decoder = DepthDecoder(encoder.channels)
@@ -37,7 +41,7 @@ trainer.train()
 
 # 分析一下结果
 # model_path = r'/root/project/AwsomeDL/data/monodepth/total_fragment.pth'
-model_path = r'/root/project/AwsomeDL/data/monodepth/temp_90_model.pth'
+# model_path = r'/root/project/AwsomeDL/data/monodepth/temp_90_model.pth'
 
 # model_path = r'/root/project/AwsomeDL/data/monodepth/bucket_model.pth'
 # model_path = r'/root/project/AwsomeDL/data/monodepth/geometry_consistance.pth'

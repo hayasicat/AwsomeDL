@@ -112,7 +112,7 @@ class PairTrainer():
         for idx, inputs in enumerate(self.train_loader):
             for key, ipt in inputs.items():
                 inputs[key] = ipt.to(self.device)
-            if idx < 12:
+            if idx < 36:
                 continue
             for i in range(100):
                 cur_image_0 = inputs['prime0_0']
@@ -156,7 +156,7 @@ class PairTrainer():
 
     def analys(self):
         for idx, inputs in enumerate(self.train_loader):
-            if idx < 12:
+            if idx < 36:
                 continue
             for key, ipt in inputs.items():
                 inputs[key] = ipt.to(self.device)
