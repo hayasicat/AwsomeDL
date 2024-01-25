@@ -109,8 +109,8 @@ class EfficientNetV2S(nn.Module):
         # 一共有五层，五层的channel就不一样
         self.channels = [24, 48, 64, 128, 256]
         # 根据数据集的性质来选定block_num 上面这个是cifar100的较优参数
-        self.block_num = [2, 4, 2, 3, 4, 5]
-        # self.block_num = [2, 4, 4, 6, 9, 15]
+        # self.block_num = [2, 4, 2, 3, 4, 5]
+        self.block_num = [2, 4, 4, 6, 9, 15]
         # 拟合能力比较差的话给后面的最后一层来点惊喜
         self.total_block = sum(self.block_num[:4])
         self.current_block = 0

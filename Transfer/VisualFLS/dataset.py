@@ -179,6 +179,7 @@ class FLSHybridDataset(FLSDataset):
         # 开始制作heatmap图片
         heat_maps = []
         # 查找
+
         for i in range(2):
             if i not in pt_type:
                 heat_maps.append(np.zeros((1, img.shape[0], img.shape[1]), np.float32))
@@ -195,6 +196,7 @@ class FLSHybridDataset(FLSDataset):
         if not self.norm_transform is None:
             img = self.norm_transform(image=img)['image']
         img = img.transpose(2, 0, 1)
+
         return img, seg.astype(np.longlong), kp_heatmap
 
 

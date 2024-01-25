@@ -26,9 +26,10 @@ train_data = MonoDataset(data_root, train_file_path, 416, 896, coor_shift=[16, 0
 
 # 相比于姿态估计网络，backbone换轻量级的倒是比较无所谓
 # encoder = EfficientNetV2S(10, input_chans=3)
+# encoder = ResNet34(10, input_chans=3)
 
-encoder = ResNet34(10, input_chans=3)
-# encoder = ResNet18(10, input_chans=3)
+encoder = ResNet18(10, input_chans=3)
+
 
 depth_decoder = DepthDecoder(encoder.channels)
 depth_net = DepthNet(encoder, depth_decoder)
@@ -52,9 +53,10 @@ trainer.train()
 
 # model_path = r'/root/project/AwsomeDL/data/monodepth/bucket_model.pth'
 # model_path = r'/root/project/AwsomeDL/data/monodepth/geometry_consistance.pth'
-#
-# #
+
+
 # pair-model
-# model_path = r'/root/project/AwsomeDL/data/sc_depth/20_model.pth'
+model_path = r'/root/project/AwsomeDL/data/monodepth/90_model.pth'
 # trainer.resume_from(model_path)
 # trainer.analys()
+# trainer.recorder()

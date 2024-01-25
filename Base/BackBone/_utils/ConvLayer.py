@@ -50,3 +50,17 @@ class DPWConv(nn.Module):
         return self.model(input_tensor)
 
 
+class PWDPWConv(nn.Module):
+    def __init__(self, input_channel, output_channel, stride=1, padding=1, act=nn.ReLU, expand_ratio=4):
+        super(PWDPWConv, self).__init__()
+        # Convlutional Local Feature
+        inter_media_channel = input_channel * expand_ratio
+        model = [
+            PointWiseConv(input_channel, inter_media_channel, act=act),
+            DepthWiseConv(inter_media_channel, inter_media_channel, stride=stride, padding=padding, act=act),
+            PointWiseConv(input_channel, output_channel, act=act)
+        ]
+        self.model = nn.Sequential(*model)
+
+    def forward(self, input_tensor):
+        return self.model(input_tensor)

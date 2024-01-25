@@ -3,9 +3,12 @@
 # @Author  : ljq
 # @desc    : 
 # @File    : MonoViewer.py
+import io
+import os
+import cv2
 import torch
 import numpy as np
-
+from PIL import Image
 import matplotlib as mpl
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
@@ -14,6 +17,7 @@ import torch.nn.functional as F
 from Transfer.MonoDepth.MonoUtils import disp_to_depth, view_syn
 from Transfer.MonoDepth.Losses.Loss import ReprojectLoss, EdgeSmoothLoss, AutoMask
 from Transfer.MonoDepth.MonoUtils.CameraTrans import transformation_from_parameters, get_sample_grid
+from Tools.Save4Video.video_saver import VideoSaver
 
 
 class MonoPloter():
@@ -37,8 +41,8 @@ class MonoPloter():
             # 进行着色显示
             depth -= self.depth_range[0]
             render_image = depth / float(self.depth_range[1] - self.depth_range[0]) * 255
-            render_image.astype(np.uint8)
-        self.show(render_image)
+            render_image = render_image.astype(np.uint8)
+        # self.show(render_image)
         return render_image
 
     def show_reproject_loss(self, loss_tensor):
@@ -73,6 +77,9 @@ class MonoViewer():
         self.using_sc_depth = using_sc_depth
         # 计算auto mask
         self.using_auto_mask = using_auto_mask
+        self.save_video_root = '/disk'
+        self.image_saver = None
+        self.depth_saver = None
 
     def visual_syn_image(self, input_info, is_show_pred=True, is_show_next=True, start_scale=0):
         #
@@ -134,7 +141,6 @@ class MonoViewer():
         syn_depth = view_syn(refer_depth, grids)
         diff_depth = (computed_map - syn_depth).abs() / (computed_map + syn_depth)
         weight_mask = (1 - diff_depth)
-        print(torch.max(weight_mask), torch.min(weight_mask))
         self.plotter.show_depth(refer_depth)
         self.plotter.show_depth(weight_mask)
 
@@ -151,19 +157,36 @@ class MonoViewer():
         self.plotter.show_reproject_loss(next_loss)
         # 损失函数分析，区块loss解决
 
-        # print(next_loss.size(), torch.max(next_loss), torch.min(next_loss))
-        # # result = torch.histogram(next_loss.cpu().detach(), 100)
-        #
-        # # plt.hist(result.hist.numpy(), bins=100, density=True)
-        # # plt.bar(bins[:-1], hist, align='edge')
-        # next_numpy = next_loss.cpu().detach().numpy().reshape([-1])
-        # bins = list(range(0, 100))
-        # bins = np.array(bins).reshape([-1]) / 100
-        #
-        # plt.hist(next_numpy, bins, density=1)
-        # plt.show()
-        #
-        # t = 0.2
-        # new = (next_loss > t) * next_loss
-        # print(torch.sum(next_loss), torch.sum(new))
-        # self.plotter.show_reproject_loss(new)
+    def save_video(self, input_info):
+        # 录像机
+        cur_images = [input_info['prime0_{}'.format(s)] for s in range(self.multi_scale)]
+        target_x = (cur_images[0] - 0.45) / 0.225
+        depth_maps = self.model.depth_map(target_x)
+        max_depth_map = depth_maps[0]
+        _, max_depth_map = disp_to_depth(max_depth_map, self.min_depth, self.max_depth)
+        # 录像
+        img = (cur_images[0] * 255)[0, ...].detach().cpu().permute(1, 2, 0).numpy().astype(np.uint8)
+        depth_img = self.plotter.show_depth(max_depth_map, False) * 2
+
+        save_depth = np.zeros_like(img)
+        save_depth[:, :, 0] = depth_img
+        save_depth[:, :, 1] = depth_img
+        save_depth[:, :, 2] = depth_img
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        # depth_img = cv2.cvtColor(depth_img, cv2.COLOR_RGB2BGR)
+        result = np.hstack([img, save_depth]).astype(np.uint8)
+        print(result.shape)
+        self.image_saver.update(result)
+        self.depth_saver.update(save_depth)
+
+    def create_video_saver(self, path):
+        self.save_video_root = path
+        # 创建两个句柄
+        raw_image_name = 'raw_image.mp4'
+        depth_name = 'depth.mp4'
+        self.image_saver = VideoSaver(os.path.join(self.save_video_root, raw_image_name), 'raw', fps=10)
+        self.depth_saver = VideoSaver(os.path.join(self.save_video_root, depth_name), 'raw', fps=10)
+
+    def stop_recorder(self):
+        self.image_saver.stop_record()
+        self.depth_saver.stop_record()

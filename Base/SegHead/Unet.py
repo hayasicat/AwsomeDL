@@ -11,7 +11,7 @@ import torch.nn.functional as F
 class UPConv(nn.Module):
     def __init__(self, input_channel, output_channel, sec_input_channel=None):
         super().__init__()
-        self.UpConv = nn.Sequential(
+        self.up_conv = nn.Sequential(
             nn.Conv2d(input_channel, output_channel, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(output_channel),
             nn.ReLU(inplace=True),
@@ -25,10 +25,19 @@ class UPConv(nn.Module):
         )
 
     def forward(self, x, skip):
-        x = self.UpConv(x)
+        x = self.up_conv(x)
         x = torch.cat([skip, x], dim=1)
         x = self.ConvBlock(x)
         return x
+
+
+class AttenUPConv(nn.Module):
+    def __init__(self, input_channel, output_channel, sec_input_channel=None):
+        super().__init__()
+        self.input_channel = input_channel
+        self.output_channel = output_channel
+
+
 
 
 class BottomConv(nn.Module):

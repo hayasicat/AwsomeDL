@@ -17,7 +17,7 @@ from Base.Loss.FocalLoss import MyFocalLoss
 class SegTrainner:
     weight_decay = 5e-4
     epochs = 200
-    batch_size = 18
+    batch_size = 12
     val_ratio = 2
     num_workers = 4
 

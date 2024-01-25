@@ -6,7 +6,7 @@
 
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
 import torch
 
@@ -28,7 +28,7 @@ val_dataset = FLSHybridDataset('/root/data/VisualFLS', is_crop=False, is_train=F
                                norm_transforms=FLS_norm_transform)
 
 # root_path = '../../data/lockhole/multi_head/UnetTotal'
-root_path = '../../data/lockhole/multi_head/EFUnet'
+root_path = '../../data/lockhole/multi_head/EFUnet_TC'
 
 if not os.path.exists(root_path):
     os.makedirs(root_path)
