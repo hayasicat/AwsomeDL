@@ -70,20 +70,23 @@ if __name__ == '__main__':
     import cv2
     import matplotlib.pyplot as plt
     from Base.SegHead.Unet import Unet, UnetHead
-    from Base.BackBone import ResNet34, ResNet18
+    from Base.BackBone import ResNet34, ResNet18, EfficientNetV2S
     from Transfer.VisualFLS.dataset import FLS_test_transforms, FLS_norm_transform
 
-    encoder = ResNet34(20, small_scale=False)
-    decoder = UnetHead()
+    encoder = EfficientNetV2S(20)
+    decoder = UnetHead(encoder.channels[::-1])
+
+    # encoder = ResNet34(20, small_scale=False)
+    # decoder = UnetHead()
     model = Unet(encoder, decoder, 3, 2, activation='')
-    model.load_state_dict(torch.load('../../data/lockhole/multi_head/190_model.pth'))
+    model.load_state_dict(torch.load('../../data/lockhole/multi_head/EFUnet_TC2/200_model.pth'))
     model = model.to(torch.device("cuda:0"))
     model.eval()
     seg_inf = SegInference(model, torch.device("cuda:0"), FLS_test_transforms, FLS_norm_transform)
     seg_inf.register(seg_inf.cls_head)
     seg_inf.register(seg_inf.kp_head)
-    img_root_path = '/backup/VisualFLS/crop_imgs'
-    visual_mask_path = '/backup/VisualFLS/view_mask'
+    img_root_path = '/root/data/VisualFLS/crop_imgs'
+    visual_mask_path = '/root/data/VisualFLS/view_mask'
     if not os.path.exists(visual_mask_path):
         os.makedirs(visual_mask_path)
     # img_files = [f for f in os.listdir(img_root_path) if f.endswith('.jpg')]
@@ -95,14 +98,14 @@ if __name__ == '__main__':
     # plt.imshow(dst)
     # plt.show()
     # 箱型检测
-    img_root_path = r'/backup/VisualFLS/container_type'
-    img_files = os.listdir(img_root_path)
+    # img_root_path = r'/backup/VisualFLS/container_type'
+    # img_files = os.listdir(img_root_path)
     img_files = [f for f in os.listdir(img_root_path) if f.endswith('.jpg')]
     # img_files = open('/backup/VisualFLS/val.txt', 'r', encoding='utf-8').read().strip().split('\n')
     for img_name in img_files:
         img = cv2.imread(os.path.join(img_root_path, img_name), cv2.IMREAD_COLOR)
-        seg_res, kp_res = seg_inf.inference(img, crop_size=[587, 402, 384, 384], is_crop=False, is_draw=True)
-        # seg_res, kp_res = seg_inf.inference(img, crop_size=[587, 402, 384, 384], is_crop=True, is_draw=True)
+        # seg_res, kp_res = seg_inf.inference(img, crop_size=[587, 402, 384, 384], is_crop=False, is_draw=True)
+        seg_res, kp_res = seg_inf.inference(img, crop_size=[587, 402, 384, 384], is_crop=True, is_draw=True)
 
         # dst = SegInfere.visual(img,  is_crop=True)
         # plt.imshow(seg_res)

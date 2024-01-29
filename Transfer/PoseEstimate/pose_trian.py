@@ -28,15 +28,15 @@ val_dataset = FLSHybridDataset('/root/data/VisualFLS', is_crop=False, is_train=F
                                norm_transforms=FLS_norm_transform)
 
 # root_path = '../../data/lockhole/multi_head/UnetTotal'
-root_path = '../../data/lockhole/multi_head/EFUnet_TC'
+root_path = '../../data/lockhole/multi_head/EFUnet_TC2'
 
 if not os.path.exists(root_path):
     os.makedirs(root_path)
 encoder = EfficientNetV2S(20)
 # encoder = ResNet34(20, small_scale=False)
 decoder = UnetHead(encoder.channels[::-1])
-# head应该在这边
-model = Unet(encoder, decoder, 3, reg_num=2, activation='')
+# 如果使用的是focal loss这边应该是sigmoid
+model = Unet(encoder, decoder, 3, reg_num=2, activation='sigmoid')
 # decoder = FPNDecoder(encoder.channels)
 # model = FPN(encoder, decoder, 3, reg_num=2, activation='')
 

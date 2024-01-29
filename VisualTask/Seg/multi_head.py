@@ -18,26 +18,30 @@ class SegMultiHead(SegTrainner):
     def __init__(self, train_dataset, test_dataset, model, class_num=1, save_path=None, resume_path=None, lr=0.001):
         super().__init__(train_dataset, test_dataset, model, class_num, save_path, resume_path, lr)
         self.kp_metric = KPDis()
-        self.seg_criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
+        # self.seg_criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
+        self.seg_criterion = MyFocalLoss(2, ignore_index=255)
+
         self.dice_loss = MyDiceLoss()
         # self.dice_loss = DiceLoss('multiclass', smooth=1, from_logits=False)
+
         self.kp_criterion = MyFocalLoss(2)  # 平方似乎会比较好点，超参数我觉得应该热力图的部分占比应该高一些
         # 分类计算
         # parameter
         self.optim = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         # 固定lr衰减的策略
-        self.sched = torch.optim.lr_scheduler.MultiStepLR(self.optim, milestones=[50, 80, 120, 140, 160, 180],
+        self.sched = torch.optim.lr_scheduler.MultiStepLR(self.optim, milestones=[40, 70, 90, 120, 140, 180],
                                                           gamma=0.4)
 
     def loss(self, pred, seg, heatmap):
         seg_pred = pred[0]
         heatmap_pred = pred[1]
         # 加上了dice loss来约束一下模型方面，收敛的速度还可以。0.47 ->
-        seg_loss = self.criterion(seg_pred, seg)
+        seg_loss = self.seg_criterion(seg_pred, seg)
         d_loss = self.dice_loss(seg_pred, seg)
         # 求取heatmap得loss,mean效果实在是太差了
         # kp_loss = torch.mean((heatmap_pred - heatmap) ** 2)
         kp_loss = self.kp_criterion(heatmap_pred, heatmap)
+        # focal loss的比例要加一下
         return 0.5 * seg_loss + 0.5 * d_loss + 10 * kp_loss
 
     def train(self):

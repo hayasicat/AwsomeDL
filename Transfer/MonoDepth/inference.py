@@ -5,7 +5,7 @@
 # @File    : bowling_training.py
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import torch
 from Transfer.MonoDepth.MonoTrainer.TripleImages import TripleTrainer
 from Transfer.MonoDepth.MonoTrainer.PairImages import PairTrainer
@@ -23,13 +23,14 @@ data_root = r'/root/data/BowlingMono'
 
 # train_file_path = os.path.join(data_root, r'bowling/train_files.txt')
 # train_file_path = os.path.join(data_root, r'splits/bowling/train_files.txt')
-
 train_file_path = os.path.join(data_root, r'splits/newnvr238_ch8_20230803000011_20230803105251/train_files.txt')
 
-img_fold = os.path.join(data_root, 'fragments')
+data_root = os.path.join(data_root, 'fragments')
+
+# img_fold = os.path.join(data_root, 'fragments')
 # train_data = MonoDataset(data_root, train_file_path, 416, 896)
 # train_data = MonoDataset(data_root, train_file_path, 832, 1824)
-train_data = MonoDataset(img_fold, train_file_path, 416, 896, coor_shift=[16, 0])
+train_data = MonoDataset(data_root, train_file_path, 416, 896, coor_shift=[16, 0])
 
 # 相比于姿态估计网络，backbone换轻量级的倒是比较无所谓
 # encoder = EfficientNetV2S(10, input_chans=3)
@@ -45,8 +46,8 @@ depth_net = DepthNet(encoder, depth_decoder)
 # model = MonoDepthSTN(depth_net, ResNet18)
 model = MonoDepthSTN(depth_net, ResNet18)
 
-trainer = TripleTrainer(train_data, model, is_parallel=False)
-trainer.train()
+trainer = TripleTrainer(train_data, model,model_path=r'/root/project/AwsomeDL/data/baseline/90_model.pth')
+# trainer.train()
 
 # sc_depth方式训练
 # model = MonoDepthPair(depth_net, ResNet18)
@@ -62,7 +63,7 @@ trainer.train()
 
 
 # pair-model
-# model_path = r'/root/project/AwsomeDL/data/monodepth/90_model.pth'
-# trainer.resume_from(model_path)
-# trainer.analys()
+model_path = r'/root/project/AwsomeDL/data/baseline/90_model.pth'
+trainer.resume_from(model_path)
+trainer.analys()
 # trainer.recorder()

@@ -29,7 +29,7 @@ class TripleTrainer:
     # 收敛以后T值的大小跟min_depth是有关系的
     min_depth = 2
 
-    def __init__(self, train_dataset, model, model_path='', **kwargs):
+    def __init__(self, train_dataset, model, model_path='', is_parallel=False, **kwargs):
         # 这边固定好数值
         for k_name, value in kwargs.items():
             setattr(self, k_name, value)
@@ -39,10 +39,8 @@ class TripleTrainer:
         if len(model_path) > 0:
             self.resume_from(model_path)
 
-        self.model = self.model.to(self.device)
-
-        self.train_loader = DataLoader(train_dataset, self.batch_size, shuffle=True, num_workers=4)
-        self.sample_loader = DataLoader(train_dataset, self.batch_size)
+        self.train_loader = DataLoader(train_dataset, self.batch_size, shuffle=True, num_workers=8)
+        self.sample_loader = DataLoader(train_dataset, 1)
 
         self.opt = torch.optim.Adam([{'params': self.model.depth_net.parameters()},
                                      {'params': self.model.pose_net.parameters(), 'lr': 1e-4}], lr=5 * 1e-4,
@@ -60,8 +58,15 @@ class TripleTrainer:
         # 一般用这个auto_mask来替代
         self.auto_mask = AutoMask()
         self.plotter = MonoPloter([self.min_depth, self.max_depth])
-        self.is_parallel = False
-        self.save_path = '/root/project/AwsomeDL/data/monodepth'
+        self.is_parallel = is_parallel
+        # 开个多卡
+        if self.is_parallel and torch.cuda.device_count() > 1:
+            self.model = torch.nn.DataParallel(self.model)
+        self.model = self.model.to(self.device)
+
+        self.save_path = '/root/project/AwsomeDL/data/baseline'
+        if not os.path.exists(self.save_path):
+            os.makedirs(self.save_path)
         self.viewer = MonoViewer(self.model, self.min_depth, self.max_depth, False, True)
         self.scaler = GradScaler()
 
@@ -121,7 +126,7 @@ class TripleTrainer:
 
             pre_losses = self.auto_mask(pre2cur, cur_image, mask)
             next_losses = self.auto_mask(next2cur, cur_image, mask)
-            # 如果不加auto mask的话也根本训不起来的。很蛋疼
+            # 如果不加auto mask的话也根本训不起来的。
 
             # 底层监督高层
             # TODO： 因为一张图所以对全部做mean，之后肯定是在batch size的维度保持一直的。dim 应该是1
@@ -177,7 +182,6 @@ class TripleTrainer:
 
                 # 几何一致性+ 变换损失，强行约束最上层的深度图收敛
                 # TODO: 深度图确实比较一致了，但是解决不了unstable的问题
-                # total_loss = 1 * depth_loss
                 total_loss = (0.97 * depth_loss + 0.03 * geometry_loss).mean()
                 train_loss.append(total_loss.detach().cpu().numpy())
                 # 优化姿态的optimizer，计算姿态的loss，一般是底层比较大，高层比较小，大概是一个1/2的衰减
@@ -216,17 +220,18 @@ class TripleTrainer:
     def analys(self):
         for idx, inputs in enumerate(self.sample_loader):
 
-            if idx < 98:
+            if idx < 70:
                 continue
             for key, ipt in inputs.items():
                 inputs[key] = ipt.to(self.device)
             self.visual_result(inputs)
             break
 
+
     def recorder(self):
         self.model.eval()
         self.viewer.update_model(self.model)
-        self.viewer.create_video_saver('/root/project/AwsomeDL/data/monodepth')
+        self.viewer.create_video_saver('/root/project/AwsomeDL/data/baseline')
         for idx, inputs in enumerate(self.sample_loader):
             for key, ipt in inputs.items():
                 inputs[key] = ipt.to(self.device)

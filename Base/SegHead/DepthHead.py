@@ -38,7 +38,7 @@ class DepthUPConv(UPConv):
         super(DepthUPConv, self).__init__(input_channel, output_channel, sec_input_channel=sec_input_channel)
 
     def forward(self, x, skip):
-        x = self.UpConv(x)
+        x = self.up_conv(x)
         x = upsample(x)
         # 在连在一块
         x = torch.cat([skip, x], dim=1)

@@ -42,7 +42,6 @@ class MonoPloter():
             depth -= self.depth_range[0]
             render_image = depth / float(self.depth_range[1] - self.depth_range[0]) * 255
             render_image = render_image.astype(np.uint8)
-        # self.show(render_image)
         return render_image
 
     def show_reproject_loss(self, loss_tensor):
@@ -115,7 +114,7 @@ class MonoViewer():
             # 添加整个变化矩阵
             trans = transformation_from_parameters(pose[..., :3], pose[..., 3:])
             cam_trans.append(trans)
-
+        print(cam_poses)
         # 可是每个深度图
         for s in range(start_scale, self.multi_scale):
             self.plotter.show_image_tensor(cur_images[s] * 255)
@@ -127,7 +126,9 @@ class MonoViewer():
                 self.plotter.show_image_tensor(source_images[frame_id][s] * 255)
                 self.plotter.show_image_tensor(source2target * 255)
                 # 可视化结果
-                self.plotter.show_depth(depth, False)
+                render_img = self.plotter.show_depth(depth, False)
+                self.plotter.show(render_img)
+
                 if self.using_sc_depth:
                     self.show_diff_map(grids, computed_depth, refer_depths[frame_id][s])
                 if self.using_auto_mask:
