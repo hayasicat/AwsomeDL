@@ -12,6 +12,8 @@ from .FileHandler.JsonFileParser import JosnParser
 from .FileHandler.VideoObject import CV2VideoObject
 from .LabelGen.KittiLabelFormat import KittiLabelGenerator
 
+from .FileHandler.DetectMethod import MoveDetector, SCDepthDetector
+
 
 # motion_js_path = r'/backup/BowlingVideo/238NVR/C1bev/activate_interval/NVR_ch8_20230729003424_20230729052354.json'
 # video_path = r'/backup/BowlingVideo/238NVR/C1bev/NVR_ch8_20230729003424_20230729052354.mp4'
@@ -49,6 +51,7 @@ def cut_and_save(video_path, js_path, save_path, start_idx=0, end_idx=100000, *a
     :param end_idx:
     :return:
     """
+    detector = SCDepthDetector(0.5)
     fragment_saver = MonoDepthVideoFramgment(save_path)
     activate_interval = JosnParser(js_path).read()
     video_stream = CV2VideoObject(video_path)
@@ -66,5 +69,9 @@ def cut_and_save(video_path, js_path, save_path, start_idx=0, end_idx=100000, *a
             video_stream.locate2frame(start_frame)
             for i in range(int(during_frame)):
                 frame = video_stream.get_frame()
-                if i % 7 == 0:
+                is_save = detector.is_activate(frame)
+                if is_save:
                     fragment_saver.write(frame)
+                # if i % 3 == 0:
+                #     fragment_saver.write(frame)
+        detector.clear()

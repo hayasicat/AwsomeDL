@@ -4,6 +4,7 @@
 # @desc    : 
 # @File    : dataset.py
 import os
+import json
 import cv2
 import numpy as np
 from PIL import Image
@@ -42,6 +43,17 @@ class MonoDataset(data.Dataset):
             self.resize_trans[i] = transforms.Resize((self.height // s, self.width // s))
         # 全部都转换为torch tensor
         self.to_tensor = transforms.ToTensor()
+        # pseudo label
+        self.has_pseudo_label = False
+        pseudo_file_name = 'pseudo_pose.json'
+        label_root, train_file = os.path.split(image_file)
+        pseudo_path = os.path.join(label_root, pseudo_file_name)
+        if os.path.exists(pseudo_path):
+            # 读取label
+            self.has_pseudo_label = True
+            with open(pseudo_path, 'r', encoding='utf-8') as f:
+                self.pseudo_info = json.loads(f.read().strip())
+        self.augment = transforms.ColorJitter((0.8, 1.2), (0.8, 1.2), (0.8, 1.2), (-0.1, 0.1))
 
     def reset_input_image_size(self, height, width, x_shift, y_shift):
         Kx = self.K[0, :] * self.org_width
@@ -58,7 +70,7 @@ class MonoDataset(data.Dataset):
     def get_color(self, folder, frame_index):
         image_path = os.path.join(self.data_root, folder, str(frame_index) + self.img_ext)
         img = cv2.imread(image_path, cv2.IMREAD_COLOR)
-        end_y = img.shape[0]-self.coor_shift[1]
+        end_y = img.shape[0] - self.coor_shift[1]
         end_x = img.shape[1] - self.coor_shift[0]
         img = img[self.coor_shift[1]:end_y, self.coor_shift[0]:end_x, :]
         return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -107,6 +119,22 @@ class MonoDataset(data.Dataset):
                 inputs[k_name] = self.to_tensor(v_)
             else:
                 inputs[k_name] = torch.from_numpy(v_)
+
+        for rank in self.frame_index:
+            image_name = 'prime' + str(rank) + '_0'
+            inputs[image_name + 'aug'] = self.augment(inputs[image_name])
+
+        # 读取位姿的伪标签,如果有的话就塞进去给个伪标签
+        if self.has_pseudo_label:
+            current_pose = self.pseudo_info.get(self.filenames[index].strip(), {})
+            key_names = list(current_pose.keys())
+            if 'pre_t' in key_names and 'next_t' in key_names:
+                inputs['pre_t'] = np.array(current_pose['pre_t']).reshape(1, -1)
+                inputs['next_t'] = np.array(current_pose['next_t']).reshape(1, -1)
+            else:
+                # 如果没有的话就塞进去一个000
+                inputs['pre_t'] = np.array([0.0, 0.0, 0.0]).reshape(1, -1)
+                inputs['next_t'] = np.array([0.0, 0.0, 0.0]).reshape(1, -1)
         return inputs
 
 
@@ -115,12 +143,13 @@ if __name__ == "__main__":
     f_p = os.path.join(r, r'bowling/train_files.txt')
     d = MonoDataset(r, f_p, 416, 896, coor_shift=[16, 0])
     # d = MonoDataset(r, f_p, 832, 1824)
-
-    o = d[0]
+    for i in range(30):
+        o = d[i]
     from torch.utils.data import DataLoader
-
-    for k, v in o.items():
-        print(k, v.shape, v)
+    #
+    # for k, v in o.items():
+    #     # print(k, v.shape, v)
+    #     print(1)
     # l = DataLoader(d, 2)
     # for o in l:
     #     for k, v in o.items():

@@ -7,7 +7,7 @@ import torch
 from torch import nn
 import torch.nn.functional as  F
 
-from .Unet import ClsBlock, RegBlock
+from .Unet import SegBlock, RegBlock
 
 
 class ConvBnRelu(nn.Module):
@@ -114,7 +114,7 @@ class FPN(nn.Module):
         self.decoder = decoder
         self.aggregate = FPNAggregate()
         # cls head
-        self.cls = ClsBlock(128, cls_num, activation)
+        self.cls = SegBlock(128, cls_num, activation)
         self.reg_num = reg_num
         if not reg_num is None:
             self.reg = RegBlock(128, reg_num)

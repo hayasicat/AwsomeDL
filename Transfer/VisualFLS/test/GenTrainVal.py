@@ -4,12 +4,11 @@
 # @desc    : root 目录下有imgs,newly,seg,backend三个文件加，newly文件夹的文件生成训练和测试集合，tran_list.txt,val_list.txt ，backend是用来存历史的标签的
 # @File    : GenTrainVal.py
 import os
-import time
 import datetime
 import shutil
 
-from Transfer.VisualFLS.CreateSegLabel import create_seg_mask
-from Transfer.VisualFLS.ReWriteCorner import rewrite_corner_label
+from Transfer.VisualFLS.test.CreateSegLabel import create_seg_mask
+from Transfer.VisualFLS.test.ReWriteCorner import rewrite_corner_label
 
 
 def gen_train_val_list(root_path, is_init=False):

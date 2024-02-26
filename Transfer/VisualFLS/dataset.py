@@ -197,7 +197,14 @@ class FLSHybridDataset(FLSDataset):
             img = self.norm_transform(image=img)['image']
         img = img.transpose(2, 0, 1)
 
-        return img, seg.astype(np.longlong), kp_heatmap
+        # 这边添加一个backbone的分类头
+        inputs = {}
+        inputs['img'] = img
+        inputs['seg'] = seg.astype(np.longlong)
+        inputs['kp_heatmap'] = kp_heatmap
+        # 分类就直接返回这个。如果是叠箱子就是1，没有叠箱子就是0.
+        inputs['cls'] = max(pt_type)
+        return inputs
 
 
 if __name__ == '__main__':
@@ -215,9 +222,12 @@ if __name__ == '__main__':
     from Base.Metrics.KP import KPDis
 
     metric = KPDis()
-    dataset = FLSHybridDataset('/backup/VisualFLS', is_crop=False, transforms=FLS_train_transforms_kp)
-    for i in range(1):
-        img, seg, heatmap = dataset[i]
+    dataset = FLSHybridDataset('/root/data/VisualFLS', is_crop=False, transforms=FLS_train_transforms_kp)
+    for i in range(100):
+        ips = dataset[i]
+        img = ips['img']
+        seg = ips['seg']
+        heatmap = ips['kp_heatmap']
         # 可视化看看
 
         metric.heatmap_dis(torch.from_numpy(heatmap), torch.from_numpy(heatmap))

@@ -38,8 +38,6 @@ class AttenUPConv(nn.Module):
         self.output_channel = output_channel
 
 
-
-
 class BottomConv(nn.Module):
     def __init__(self, input_channel, output_channel):
         super().__init__()
@@ -55,7 +53,7 @@ class BottomConv(nn.Module):
         return x
 
 
-class ClsBlock(nn.Module):
+class SegBlock(nn.Module):
     def __init__(self, input_channel, cls, activation_type='sigmoid'):
         super().__init__()
         if activation_type == 'sigmoid':
@@ -124,20 +122,29 @@ class UnetHead(nn.Module):
 
 
 class Unet(nn.Module):
-    def __init__(self, encoder, decoder, cls_num, reg_num=None, activation=''):
+    def __init__(self, encoder, decoder, cls_num, reg_num=None, using_cls=False, activation=''):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
         # cls head
-        self.cls = ClsBlock(decoder.last_channel, cls_num, activation)
+        self.seg = SegBlock(decoder.last_channel, cls_num, activation)
         self.reg_num = reg_num
         if not reg_num is None:
             self.reg = RegBlock(decoder.last_channel, reg_num)
+        self.using_cls = using_cls
 
     def forward(self, input_tensor):
         features = self.encoder.feature_extract(input_tensor)
         x = self.decoder(features[::-1])
         # 修改了一下
-        if self.reg_num is None:
-            return self.cls(x)
-        return self.cls(x), self.reg(x)
+        return_info = []
+        return_info.append(self.seg(x))
+        if not self.reg_num is None:
+            return_info.append(self.reg(x))
+        # 返回结果
+        if self.using_cls:
+            # 增加抓想和叠箱两种任务的区分
+            cls = self.encoder.get_cls(features[-1])
+            return_info.append(cls)
+
+        return return_info

@@ -37,7 +37,7 @@ class MyDiceLoss(_Loss):
         cardinality = torch.sum(y_pred + y_target, dim=dims)
         # 如果不适用1.0的话会导致问腿
         dice_loss = 1.0 - (2.0 * intersection + smooth) / (cardinality + smooth).clamp_min(eps)
-        # 去除
+        # 去掉没有地方
         mask = y_target.sum(dims) > 0
         dice_loss *= mask.to(dice_loss.dtype)
         return dice_loss.mean()

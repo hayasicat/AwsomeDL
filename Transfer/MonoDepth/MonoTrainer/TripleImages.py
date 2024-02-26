@@ -93,6 +93,9 @@ class TripleTrainer:
         cur_images = [inputs['prime0_{}'.format(i)] for i in range(len(depth_maps))]
         pre_images = [inputs['prime-1_{}'.format(i)] for i in range(len(depth_maps))]
         next_images = [inputs['prime1_{}'.format(i)] for i in range(len(depth_maps))]
+
+        # 这边计算auto mask
+
         for scale in range(start_scale, len(depth_maps)):
             # 取不同层次的图片
             trans_size = scale
@@ -166,12 +169,13 @@ class TripleTrainer:
         for idx, inputs in enumerate(self.train_loader):
             for key, ipt in inputs.items():
                 inputs[key] = ipt.to(self.device)
-            self.opt.zero_grad()
+
             cur_image_0 = inputs['prime0_0']
             pre_image_0 = inputs['prime-1_0']
             next_image_0 = inputs['prime1_0']
             # 参数变换
             with autocast():
+                self.opt.zero_grad()
                 depth_maps, refers_pose, next_pose = self.model(pre_image_0, cur_image_0, next_image_0)
 
                 geometry_loss = self.compute_depth_geometry_consistency(depth_maps)
@@ -226,7 +230,6 @@ class TripleTrainer:
                 inputs[key] = ipt.to(self.device)
             self.visual_result(inputs)
             break
-
 
     def recorder(self):
         self.model.eval()

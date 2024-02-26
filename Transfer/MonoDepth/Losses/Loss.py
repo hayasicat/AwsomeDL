@@ -36,7 +36,7 @@ class EdgeSmoothLoss(_Loss):
         super().__init__()
         self.need_norm = need_norm
 
-    def forward(self, disp, img):
+    def forward(self, disp, img, **kwargs):
         if self.need_norm:
             # 正则化
             mean_disp = disp.mean(2, True).mean(3, True)
@@ -50,6 +50,8 @@ class EdgeSmoothLoss(_Loss):
         grad_disp_y *= torch.exp(-grad_img_y)
         # 批维度要有
         return grad_disp_x.mean([1, 2, 3]) + grad_disp_y.mean([1, 2, 3])
+
+
 
 
 class AutoMask(_Loss):
@@ -74,7 +76,7 @@ class AutoMask(_Loss):
         mask += torch.randn(mask.shape, device=cur_images.device) * 0.00001
         return mask
 
-    def forward(self, pre_pred, cur_image, mask, using_papers=False):
+    def forward(self, pre_pred, cur_image, mask, using_papers=False, using_mean=True, **kwargs):
         # 用不同的loss来约束
         reprojection_loss = self.loss_backend(pre_pred, cur_image)
         combined = torch.cat((mask, reprojection_loss), dim=1)
@@ -87,7 +89,11 @@ class AutoMask(_Loss):
             # print(losses.size(), torch.sum(losses, [1, 2]).size())
             # print(torch.sum(losses, [1, 2]), torch.sum(true_mask, [1, 2]))
             losses = torch.sum(losses, [1, 2], keepdim=True) / (torch.sum(true_mask, [1, 2], keepdim=True) + 1e-8)
-        return losses.mean([1, 2])
+        # 兼容两张图片的训练
+        if using_mean:
+            return losses.mean([1, 2])
+        else:
+            return losses
 
     def analyze(self, pre_pred, cur_image, mask):
         reprojection_loss = self.loss_backend(pre_pred, cur_image)

@@ -42,38 +42,43 @@ if __name__ == "__main__":
     from Transfer.MonoDepth.dataset import MonoDataset
     from Transfer.MonoDepth.Losses.Loss import ReprojectLoss, EdgeSmoothLoss, AutoMask
 
-    data_root = r'/root/project/AwsomeDL/data/BowlingMono'
-    train_file_path = os.path.join(data_root, r'bowling/train_files.txt')
-    # train_data = MonoDataset(data_root, train_file_path, 416, 896)
-    train_data = MonoDataset(data_root, train_file_path, 832, 1824)
+    # data_root = r'/root/project/AwsomeDL/data/BowlingMono'
+    # train_file_path = os.path.join(data_root, r'bowling/train_files.txt')
+    # fragment_path = data_root
+
+    data_root = r'/root/data/BowlingMono'
+    train_file_path = os.path.join(data_root, r'splits/newnvr238_ch8_20230803000011_20230803105251/train_files.txt')
+    fragment_path = os.path.join(data_root, 'fragments')
+    train_data = MonoDataset(fragment_path, train_file_path, 416, 896, coor_shift=[16, 0])
+    # train_data = MonoDataset(fragment_path, train_file_path, 832, 1824)
     from torch.utils.data import DataLoader
     from Transfer.MonoDepth.MonoUtils.CameraTrans import get_sample_grid, transformation_from_parameters
 
     g_loss = ReprojectLoss()
     train_loader = DataLoader(train_data, 1)
     for idx, inputs in enumerate(train_loader):
-        if idx <= 12:
+        if idx <= 28:
             continue
-        image = inputs['prime0_3']
-        image_next = inputs['prime1_3']
-        image_pre = inputs['prime-1_3']
-        K = inputs['K_3']
-        inv_K = inputs['inv_K3']
+        image = inputs['prime0_0']
+        image_next = inputs['prime1_0']
+        image_pre = inputs['prime-1_0']
+        K = inputs['K_2']
+        inv_K = inputs['inv_K2']
         auto_mask = AutoMask()
         mask = auto_mask.compute_real_project(image, image_next, image_pre)
-        fake_depth = torch.ones((image.size(0), 1, image.size(2), image.size(3))) * 5
+        fake_depth = torch.ones((image.size(0), 1, image.size(2), image.size(3))) * 10
+
         # 伪造一个旋转矩阵，和一个转移矩阵
         rot = torch.zeros((1, 1, 3))
         trans = torch.zeros((1, 1, 3))
-        trans[:, :, 0] = 0.025 * 10
+        trans[:, :, 0] = 0.5
         #
         T = transformation_from_parameters(rot, trans)
-        print(T)
-        sample_grid = get_sample_grid(fake_depth, K, inv_K, T)
+        sample_grid, _ = get_sample_grid(fake_depth, K, inv_K, T)
         # 合成一个新视角得图片
         new_image = view_syn(image_next, sample_grid)
         visualTensor(image * 255)
-        visualTensor(image_next * 255)
+        # visualTensor(image_next * 255)
         visualTensor(new_image * 255)
         source_loss = g_loss(image, image_next)
         reproject_loss = g_loss(image, new_image)
@@ -82,7 +87,8 @@ if __name__ == "__main__":
         visualReproject(reproject_loss)
 
         # automask loss
-        automask_loss = auto_mask(image, image_next, mask)
+        automask_loss = auto_mask(image, image_next, mask, using_mean=False)
+
         visualReproject(automask_loss)
         print("source:", source_loss.mean())
         print("reproject:", reproject_loss.mean())

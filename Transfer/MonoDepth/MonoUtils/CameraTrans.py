@@ -29,6 +29,7 @@ def get_sample_grid(depth, K, inv_K, T):
     P = torch.matmul(K, T)[:, :3, :]
 
     cam_points_t = torch.matmul(P, world_points)
+    # 归一化
     pix_coords_t = cam_points_t[:, :2, :] / (cam_points_t[:, 2, :].unsqueeze(1) + 1e-7)
     pix_coords_t = pix_coords_t.view(b, 2, h, w)
     pix_coords_t = pix_coords_t.permute(0, 2, 3, 1)

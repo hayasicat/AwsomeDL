@@ -156,6 +156,13 @@ class ResNet(nn.Module):
                 nn.init.constant_(layer.weight, 1)
                 nn.init.constant_(layer.bias, 0)
 
+    def get_cls(self, x):
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.model.fc(x)
+        # 解决这个问题
+        return x
+
 
 class ResNet18(ResNet):
     def __init__(self, num_cls, small_scale=False, input_chans=3):
@@ -174,10 +181,6 @@ class ResNet50(ResNet):
 
 
 if __name__ == '__main__':
-    # a = BasicBlock(128, 64, is_downsample=True)
-    # a.init_weights()
-    # t = a(torch.zeros(1, 128, 64, 64))
-    # print(t.size())
     m = ResNet(BottleneckBlock, 100)
     m.init_weights()
     t = m.feature_extract(torch.zeros(1, 3, 224, 224))

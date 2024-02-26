@@ -64,6 +64,12 @@ class MonoPloter():
         plt.imshow(image)
         plt.show()
 
+    def calculate_hist(self, input_tensor):
+        x_dis = np.linspace(0, 1, 50)
+        loss = input_tensor.detach().cpu().numpy().reshape(-1)
+        plt.hist(loss, x_dis)
+        plt.show()
+
 
 class MonoViewer():
     def __init__(self, model, min_depth=3, max_depth=10, using_sc_depth=False, using_auto_mask=False):
@@ -114,7 +120,20 @@ class MonoViewer():
             # 添加整个变化矩阵
             trans = transformation_from_parameters(pose[..., :3], pose[..., 3:])
             cam_trans.append(trans)
-        print(cam_poses)
+        # 通过前面的图片重建后面的图片
+        pre_depth_map = self.model.depth_map((pre_images[0] - 0.45) / 0.225)[0]
+        pre2cur_pose = self.model.get_pose((pre_images[0] - 0.45) / 0.225, target_x)
+        pre2cur_trans = transformation_from_parameters(pre2cur_pose[..., :3], pre2cur_pose[..., 3:])
+        pre2next = torch.matmul(pre2cur_trans, cam_trans[0])
+        print(pre2next, pre2cur_trans, cam_trans)
+        _, pre_depth = disp_to_depth(pre_depth_map, self.min_depth, self.max_depth)
+        render_img = self.plotter.show_depth(pre_depth, False)
+        self.plotter.show(render_img)
+        grids, computed_depth = get_sample_grid(pre_depth, Ks[0], inv_Ks[0], pre2next)
+        source2target = view_syn(next_images[0], grids)
+        self.plotter.show_image_tensor(pre_images[0] * 255)
+        self.plotter.show_image_tensor(source2target * 255)
+
         # 可是每个深度图
         for s in range(start_scale, self.multi_scale):
             self.plotter.show_image_tensor(cur_images[s] * 255)
@@ -154,9 +173,12 @@ class MonoViewer():
         mean_loss = next_loss.mean([1, 2])
         loss_map_from = F.one_hot(idx, num_classes=3) * 255
         loss_map_from = loss_map_from.squeeze(0).permute(2, 0, 1)
+        self.plotter.calculate_hist(next_loss)
         self.plotter.show_reproject_loss(loss_map_from)
         self.plotter.show_reproject_loss(next_loss)
         # 损失函数分析，区块loss解决
+        next_loss = next_loss >= 0.3
+        self.plotter.show_reproject_loss(next_loss)
 
     def save_video(self, input_info):
         # 录像机
@@ -176,7 +198,6 @@ class MonoViewer():
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         # depth_img = cv2.cvtColor(depth_img, cv2.COLOR_RGB2BGR)
         result = np.hstack([img, save_depth]).astype(np.uint8)
-        print(result.shape)
         self.image_saver.update(result)
         self.depth_saver.update(save_depth)
 

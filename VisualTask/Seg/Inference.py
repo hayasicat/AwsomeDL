@@ -71,15 +71,18 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from Base.SegHead.Unet import Unet, UnetHead
     from Base.BackBone import ResNet34, ResNet18, EfficientNetV2S
+    from Base.BackBone.TochvisionBackbone import TorchvisionResnet18
     from Transfer.VisualFLS.dataset import FLS_test_transforms, FLS_norm_transform
 
-    encoder = EfficientNetV2S(20)
+    # encoder = EfficientNetV2S(20)
+    encoder = TorchvisionResnet18(2)
     decoder = UnetHead(encoder.channels[::-1])
 
-    # encoder = ResNet34(20, small_scale=False)
     # decoder = UnetHead()
     model = Unet(encoder, decoder, 3, 2, activation='')
-    model.load_state_dict(torch.load('../../data/lockhole/multi_head/EFUnet_TC2/200_model.pth'))
+    # model.load_state_dict(torch.load('../../data/lockhole/multi_head/EFUnet_TC2/200_model.pth'))
+    model.load_state_dict(torch.load('../../data/lockhole/multi_head/torchUnet_TC3/200_model.pth'))
+
     model = model.to(torch.device("cuda:0"))
     model.eval()
     seg_inf = SegInference(model, torch.device("cuda:0"), FLS_test_transforms, FLS_norm_transform)

@@ -86,6 +86,11 @@ class MonoDepthSTN(nn.Module):
     def get_pose(self, pre_image, cur_image):
         # 前后帧
         refer_input = torch.cat([pre_image, cur_image], dim=1)
+        # 缩小图片试试
+        # scale_pred = F.interpolate(pre_image, scale_factor=0.5, mode='bilinear')
+        # scale_cur = F.interpolate(cur_image, scale_factor=0.5, mode='bilinear')
+        # refer_input = torch.cat([scale_pred, scale_cur], dim=1)
+
         # refer才是一个逆变换,以向后变换来说
         refer_trans = self.pose_net(refer_input)
         # 对齐一下monodepth2
@@ -120,6 +125,30 @@ class MonoDepthSTN(nn.Module):
         # 从大大小深度图
         return depth_maps, refers_pose, next_pose
 
+    def multi_depth(self, pre_image, cur_image, next_image, *args, **kwargs):
+        prex_x = (pre_image - 0.45) / 0.225
+        cur_x = (cur_image - 0.45) / 0.225
+        next_x = (next_image - 0.45) / 0.225
+        # 尽量缩小图片
+        pre_pose = (F.interpolate(pre_image, scale_factor=0.5, mode='bilinear') - 0.45) / 0.225
+        cur_pose = (F.interpolate(cur_image, scale_factor=0.5, mode='bilinear') - 0.45) / 0.225
+        next_pose = (F.interpolate(next_image, scale_factor=0.5, mode='bilinear') - 0.45) / 0.225
+
+        refers_pose = self.get_pose(pre_pose, cur_pose)
+        # refers_pose = self.get_pose(cur_x, prex_x)
+        next_pose = self.get_pose(cur_pose, next_pose)
+        cur_pose = self.get_pose(cur_pose, cur_pose)
+
+        # refers_pose = self.get_pose(prex_x, cur_x)
+        # # refers_pose = self.get_pose(cur_x, prex_x)
+        # next_pose = self.get_pose(cur_x, next_x)
+        # cur_pose = self.get_pose(cur_x, cur_x)
+
+        depth_maps = self.depth_map(cur_x)
+        pre_depth_maps = self.depth_map(prex_x)
+        nex_depth_maps = self.depth_map(next_x)
+        return [depth_maps, pre_depth_maps, nex_depth_maps], [refers_pose, next_pose, cur_pose]
+
 
 class MonoDepthPair(MonoDepthSTN):
 
@@ -140,6 +169,14 @@ class MonoDepthPair(MonoDepthSTN):
             pose.append(self.get_pose(cur_x, x))
             pose_inv.append(self.get_pose(x, cur_x))
             # 深度图
-            refers_depth_maps.append(self.depth_net(x))
+            refers_depth_maps.append(self.depth_map(x))
 
         return cur_depth_map, refers_depth_maps, pose, pose_inv
+
+
+class MonoDepthConcat:
+    def __init__(self, depth_net):
+        # 使用encoder高维的特征来输出位姿,是不是会比一个pose更好点.
+        self.depth_net = depth_net
+        # 创建一个分类的head
+        pass

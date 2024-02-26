@@ -16,20 +16,22 @@ from Base.BackBone.EfficientNetV2 import EfficientNetV2S
 from Base.BackBone.ResNet import ResNet18, ResNet34
 from Base.SegHead.DepthHead import DepthDecoder, DepthNet
 
-# data_root = r'/root/project/AwsomeDL/data/BowlingMono'
-data_root = r'/root/data/BowlingMono'
+data_root = r'/root/project/AwsomeDL/data/BowlingMono'
 
 # data_root = r'/root/project/AwsomeDL/data/BowlingMonoNew'
 
-# train_file_path = os.path.join(data_root, r'bowling/train_files.txt')
+train_file_path = os.path.join(data_root, r'bowling/train_files.txt')
 # train_file_path = os.path.join(data_root, r'splits/bowling/train_files.txt')
 
-train_file_path = os.path.join(data_root, r'splits/newnvr238_ch8_20230803000011_20230803105251/train_files.txt')
+# data_root = r'/root/data/BowlingMono'
+# train_file_path = os.path.join(data_root, r'splits/newnvr238_ch8_20230803000011_20230803105251/train_files.txt')
+#
+# img_fold = os.path.join(data_root, 'fragments')
+# data_root = img_fold
 
-img_fold = os.path.join(data_root, 'fragments')
 # train_data = MonoDataset(data_root, train_file_path, 416, 896)
 # train_data = MonoDataset(data_root, train_file_path, 832, 1824)
-train_data = MonoDataset(img_fold, train_file_path, 416, 896, coor_shift=[16, 0])
+train_data = MonoDataset(data_root, train_file_path, 416, 896, coor_shift=[16, 0])
 
 # 相比于姿态估计网络，backbone换轻量级的倒是比较无所谓
 # encoder = EfficientNetV2S(10, input_chans=3)
@@ -62,7 +64,7 @@ trainer.train()
 
 
 # pair-model
-# model_path = r'/root/project/AwsomeDL/data/monodepth/90_model.pth'
+# model_path = r'/root/project/AwsomeDL/data/baseline/90_model.pth'
 # trainer.resume_from(model_path)
 # trainer.analys()
 # trainer.recorder()

@@ -19,7 +19,8 @@ class SegMultiHead(SegTrainner):
         super().__init__(train_dataset, test_dataset, model, class_num, save_path, resume_path, lr)
         self.kp_metric = KPDis()
         # self.seg_criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
-        self.seg_criterion = MyFocalLoss(2, ignore_index=255)
+        self.seg_criterion = MyFocalLoss(2, from_logits=True, ignore_index=255)
+        self.cls_criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
 
         self.dice_loss = MyDiceLoss()
         # self.dice_loss = DiceLoss('multiclass', smooth=1, from_logits=False)
@@ -29,20 +30,31 @@ class SegMultiHead(SegTrainner):
         # parameter
         self.optim = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         # 固定lr衰减的策略
-        self.sched = torch.optim.lr_scheduler.MultiStepLR(self.optim, milestones=[40, 70, 90, 120, 140, 180],
+        # self.sched = torch.optim.lr_scheduler.MultiStepLR(self.optim, milestones=[40, 70, 90, 120, 140, 180],
+        #                                                   gamma=0.4)
+        # 预训练权重可以缩短训练的时间
+        self.sched = torch.optim.lr_scheduler.MultiStepLR(self.optim, milestones=[25, 45, 60, 75, 85, 93],
                                                           gamma=0.4)
-
-    def loss(self, pred, seg, heatmap):
+    def loss(self, pred, ips):
+        seg = ips['seg'].to(self.device)
+        heatmap = ips['kp_heatmap'].to(self.device)
         seg_pred = pred[0]
         heatmap_pred = pred[1]
+
         # 加上了dice loss来约束一下模型方面，收敛的速度还可以。0.47 ->
         seg_loss = self.seg_criterion(seg_pred, seg)
         d_loss = self.dice_loss(seg_pred, seg)
         # 求取heatmap得loss,mean效果实在是太差了
         # kp_loss = torch.mean((heatmap_pred - heatmap) ** 2)
-        kp_loss = self.kp_criterion(heatmap_pred, heatmap)
-        # focal loss的比例要加一下
-        return 0.5 * seg_loss + 0.5 * d_loss + 10 * kp_loss
+        # kp_loss = self.kp_criterion(heatmap_pred, heatmap)
+        # 加一下分类的结果
+        l = 0.4 * seg_loss + 0.4 * d_loss
+        if len(pred) >= 3:
+            cls_label = ips['cls'].to(self.device)
+            cls_pred = pred[2]
+            # 这边看看结果
+            l += 0.2 * self.cls_criterion(cls_pred, cls_label)
+        return l
 
     def train(self):
         if self.epochs % 100 == 0:
@@ -59,14 +71,13 @@ class SegMultiHead(SegTrainner):
     def train_step(self):
         self.model.train()
         total_loss = []
-        for imgs, seg, heatmap in self.train_loader:
+        for ips in self.train_loader:
+            imgs = ips['img']
             imgs = imgs.to(self.device)
-            seg = seg.to(self.device)
-            heatmap = heatmap.to(self.device)
             self.optim.zero_grad()
             pred = self.model(imgs)
             # 255有效值不变，需要提取边缘得mask码来做
-            train_loss = self.loss(pred, seg, heatmap)
+            train_loss = self.loss(pred, ips)
             train_loss.backward()
             self.optim.step()
             total_loss.append(train_loss.detach().cpu().numpy())
@@ -75,7 +86,11 @@ class SegMultiHead(SegTrainner):
     @torch.no_grad()
     def val_step(self):
         self.model.eval()
-        for imgs, seg, heatmap in self.train_loader:
+        for ips in self.train_loader:
+            imgs = ips['img']
+            seg = ips['seg']
+            heatmap = ips['kp_heatmap']
+
             imgs = imgs.to(self.device)
             seg = seg.to(self.device)
             heatmap = heatmap.to(self.device)
@@ -90,6 +105,7 @@ class SegMultiHead(SegTrainner):
             gt = seg.cpu().numpy()
             # heat_map先不计算
             self.metric.batch_miou(seg_preds, gt)
+
         # 计算所有的miou
         miou = self.metric.miou()
         self.metric.clean()

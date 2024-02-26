@@ -5,3 +5,4 @@ from .STN import STN
 from .EfficientNetV2 import EfficientNetV2S
 from .MobilenetV2 import MobileNetV2
 from .EfficientM import EfficientModify
+from .TochvisionBackbone import TorchvisionResnet18

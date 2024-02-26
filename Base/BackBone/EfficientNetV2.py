@@ -90,7 +90,6 @@ class ClassHead(nn.Module):
         self.fc2 = nn.Linear(out_ch, num_cls)
 
     def forward(self, x):
-
         x = self.head(x)
         x = self.dropout(x)
         return self.fc2(x)
@@ -192,6 +191,11 @@ class EfficientNetV2S(nn.Module):
             elif isinstance(layer, (nn.BatchNorm2d, nn.GroupNorm)):
                 nn.init.constant_(layer.weight, 1)
                 nn.init.constant_(layer.bias, 0)
+
+    def get_cls(self, x):
+        x = self.cls_head(x)
+        # 解决这个问题
+        return x
 
 
 if __name__ == "__main__":

@@ -47,8 +47,33 @@ class TCProcessor(YHProcessor):
         crop_point = [int(base_point[0]) - init_dict['rect_shape'] // 2,
                       int(base_point[1]) - init_dict['rect_shape'] // 2, init_dict['rect_shape'],
                       init_dict['rect_shape']]
+
         if crop_point[0] + crop_point[2] > img_shape[1]:
             crop_point[0] = img_shape[1] - crop_point[2]
         if crop_point[1] + crop_point[3] > img_shape[0]:
             crop_point[1] = img_shape[0] - crop_point[3]
+        if crop_point[0] < 0:
+            crop_point[2] -= crop_point[0]
+            crop_point[0] = 0
+        if crop_point[1] < 0:
+            crop_point[3] -= crop_point[1]
+            crop_point[1] = 0
         return crop_point
+
+
+class TCBase(YHProcessor):
+    grasp_container = {
+        'LU': [1295, 381],
+        'LB': [1303, 33],
+        'RU': [821, 441],
+        'RB': [1019, 15],
+        'rect_shape': 1024
+    }
+
+    fold_container = {
+        'LU': [687, 680],
+        'LB': [664, 682],
+        'RU': [1525, 405],
+        'RB': [1284, 435],
+        'rect_shape': 384
+    }

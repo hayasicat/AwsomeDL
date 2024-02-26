@@ -5,6 +5,11 @@
 # @File    : DetectMethod.py
 import cv2
 
+import torch
+import torch.nn as nn
+
+import numpy as np
+
 
 class DiffFrameDetector():
     def __init__(self, frame_num=2) -> None:
@@ -46,3 +51,104 @@ class DiffFrameDetector():
             self.current_state = 0
         # 为了容错性，检测到在动之后要连续三帧才能转变
         return True
+
+
+class SSIM(nn.Module):
+    # https://github.com/JiawangBian/sc_depth_pl/blob/master/losses/loss_functions.py
+    """Layer to compute the SSIM loss between a pair of images
+    """
+
+    def __init__(self, kernel_size=7):
+        super(SSIM, self).__init__()
+        k = kernel_size
+        self.mu_x_pool = nn.AvgPool2d(k, 1)
+        self.mu_y_pool = nn.AvgPool2d(k, 1)
+        self.sig_x_pool = nn.AvgPool2d(k, 1)
+        self.sig_y_pool = nn.AvgPool2d(k, 1)
+        self.sig_xy_pool = nn.AvgPool2d(k, 1)
+
+        self.refl = nn.ReflectionPad2d(k // 2)
+
+        self.C1 = 0.01 ** 2
+        self.C2 = 0.03 ** 2
+
+    def forward(self, x, y):
+        x = self.refl(x)
+        y = self.refl(y)
+
+        mu_x = self.mu_x_pool(x)
+        mu_y = self.mu_y_pool(y)
+
+        sigma_x = self.sig_x_pool(x ** 2) - mu_x ** 2
+        sigma_y = self.sig_y_pool(y ** 2) - mu_y ** 2
+        sigma_xy = self.sig_xy_pool(x * y) - mu_x * mu_y
+
+        SSIM_n = (2 * mu_x * mu_y + self.C1) * (2 * sigma_xy + self.C2)
+        SSIM_d = (mu_x ** 2 + mu_y ** 2 + self.C1) * \
+                 (sigma_x + sigma_y + self.C2)
+
+        return torch.clamp((1 - SSIM_n / SSIM_d) / 2, 0, 1)
+
+
+class MoveDetector():
+    def __init__(self, threshold):
+        self.ssim = SSIM(7)
+        self.cache_list = []
+        self.threshold = threshold
+
+    def is_activate(self, frame):
+        frame = cv2.resize(frame, (896, 416))
+        # 把frame 归一化，然后取片段
+        frame = frame.astype(np.float32) / 255.0
+        # 转为tensor
+        frame_tensor = torch.from_numpy(frame).permute(2, 0, 1)
+        if len(self.cache_list) == 0:
+            self.cache_list.append(frame_tensor)
+            return True
+        history_frame = self.cache_list[0]
+        noisy = 0.85 * self.ssim(frame_tensor, history_frame)[0] + 0.15 * torch.abs(
+            frame_tensor - history_frame)[0]
+        noisy = noisy.mean([0, 1])
+        print(noisy)
+        # noisy超过一定阈值以后
+        if noisy >= self.threshold:
+            self.cache_list.pop(0)
+            self.cache_list.append(frame_tensor)
+            return True
+        return False
+
+    def clear(self):
+        self.cache_list = []
+
+
+class SCDepthDetector():
+    def __init__(self, threshold=0.5):
+        self.cache_list = []
+        self.threshold = threshold
+
+    def is_activate(self, frame):
+        frame = cv2.resize(frame, (896, 416))
+        frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        if len(self.cache_list) == 0:
+            self.cache_list.append(frame_gray)
+            return True
+        history_frame = self.cache_list[0]
+        h, w = frame_gray.shape
+        diff = np.abs(history_frame - frame_gray)
+        ratio = (diff > 10).sum() / (h * w)
+        # noisy超过一定阈值以后
+        if ratio >= self.threshold:
+            self.cache_list.pop(0)
+            self.cache_list.append(frame_gray)
+            return True
+        return False
+
+    def clear(self):
+        self.cache_list = []
+
+
+class FeatureMatchDetector():
+    def __init__(self,threshold=10):
+        # 虽然比较慢一点，按时能得到一个稳定结果的话，也还算是还不错
+
+        pass

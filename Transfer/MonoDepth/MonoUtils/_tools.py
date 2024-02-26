@@ -27,7 +27,7 @@ def view_syn(source_frame, grid_sample):
     new_view = F.grid_sample(
         source_frame,
         grid_sample,
-        padding_mode="zeros")
-    # padding_mode = "border")
+        # padding_mode="zeros")
+        padding_mode="border")
 
     return new_view
