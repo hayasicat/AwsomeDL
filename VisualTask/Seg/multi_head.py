@@ -17,8 +17,10 @@ from Tools.Logger.my_logger import init_logger
 
 class SegMultiHead(SegTrainner):
 
-    def __init__(self, train_dataset, test_dataset, model, class_num=1, save_path=None, resume_path=None, lr=0.001):
-        super().__init__(train_dataset, test_dataset, model, class_num, save_path, resume_path, lr)
+    def __init__(self, train_dataset, test_dataset, model, class_num=1, save_path=None, resume_path=None, lr=0.001,
+                 batch_size=12):
+        super().__init__(train_dataset, test_dataset, model, class_num, save_path, resume_path, lr,
+                         batch_size=batch_size)
         self.kp_metric = KPDis()
         # self.seg_criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
         self.seg_criterion = MyFocalLoss(2, from_logits=True, ignore_index=255)

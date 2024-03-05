@@ -1,2 +1,2 @@
-from .Seg.ShortCut import FPA, GAU
-from .ModelHead.Seg import SegHead
+from .Seg.ShortCut import FPA, GAU, SPFPA
+from .ModelHead.Seg import SegHead, RegHead

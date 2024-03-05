@@ -23,4 +23,3 @@ class ConvBnAct(nn.Module):
     def forward(self, x):
         return self.act(self.bn(self.conv(x)))
 
-

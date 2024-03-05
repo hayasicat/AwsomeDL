@@ -22,7 +22,8 @@ class SegTrainner:
     num_workers = 4
 
     def __init__(self, train_dataset, test_dataset, model, class_num=1, save_path=None, resume_path=None, lr=0.001,
-                 **kwargs):
+                 batch_size=12, **kwargs):
+        self.batch_size = batch_size
         self.lr = lr
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset

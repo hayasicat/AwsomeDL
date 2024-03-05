@@ -63,7 +63,7 @@ trainer = TripleTrainer(train_data, model,model_path=r'/root/project/AwsomeDL/da
 
 
 # pair-model
-model_path = r'/root/project/AwsomeDL/data/baseline/90_model.pth'
+model_path = r'/root/project/AwsomeDL/data/baseline/torchvision.pth'
 trainer.resume_from(model_path)
 trainer.analys()
 # trainer.recorder()

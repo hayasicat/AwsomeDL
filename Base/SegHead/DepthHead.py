@@ -137,7 +137,7 @@ if __name__ == "__main__":
 
     encoder = EfficientNetV2S(10, input_chans=3)
     # encoder = ResNet34(10, input_chans=3)
-    de = DepthDecoder(encoder.channels)
+    de = DepthDecoder(encoder.channels[::-1])
     d = DepthNet(encoder, de)
     input_tensor = torch.ones((1, 3, 640, 640))
     outs = d(input_tensor)

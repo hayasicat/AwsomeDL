@@ -1,1 +1,1 @@
-from .Seg import SegHead
+from .Seg import SegHead, RegHead

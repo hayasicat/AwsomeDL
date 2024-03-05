@@ -5,48 +5,57 @@
 # @File    : PAN.py
 from torch import nn
 import torch.nn.functional as F
-from Base.MyModule.Seg import FPA, GAU
-from Base.MyModule import SegHead
+from Base.MyModule.Seg import FPA, GAU, SPFPA
+from Base.MyModule import SegHead, RegHead
 
 
 class PANDecoder(nn.Module):
-    def __init__(self, channels=[512, 256, 128, 64], decoder_channel=128):
+    def __init__(self, channels=[512, 256, 128, 64], decoder_channel=64):
         super().__init__()
         if len(channels) == 4:
             channels.append(channels[-1])
         # 这边底层搞一个
 
-        self.fpa = FPA(channels[0], decoder_channel)
+        self.fpa = SPFPA(channels[0], decoder_channel)
         self.decoder0 = GAU(channels[1], decoder_channel)
         self.decoder1 = GAU(channels[2], decoder_channel)
+        # 最后几层给降采样
         self.decoder2 = GAU(channels[3], decoder_channel)
         self.decoder3 = GAU(channels[4], decoder_channel)
-        self.last_channel = channels[-1]
+        self.last_channel = decoder_channel
+        self.channels = [decoder_channel, decoder_channel, decoder_channel, decoder_channel, decoder_channel]
 
     def get_stage(self):
-        return [self.decoder_layer1, self.decoder_layer2, self.decoder_layer3, self.decoder_layer4]
+        return [self.decoder0, self.decoder1, self.decoder2, self.decoder3]
 
     def forward(self, features):
         x = features[0]
         intern_features = features[1:]
         stages = self.get_stage()
         x = self.fpa(x)
-        for f, stage in zip(intern_features, stages):
+        for idx, f, stage in zip(range(len(stages)), intern_features, stages):
             x = stage(x, f)
         # TODO： 因为是小目标，所以这边暂时使用两层的upsample
         # 最后对结果添加一个分类头
         x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)
         return x
 
+    def bottom_feature(self, bottom_feature):
+        # 用来做底层特征加工
+        return self.fpa(bottom_feature)
+
 
 class PAN(nn.Module):
     # 金子塔解码
-    def __init__(self, encoder, decoder, seg_num, using_cls=False, activation=''):
+    def __init__(self, encoder, decoder, seg_num, using_cls=False, reg_num=None, activation=''):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
         # 这边加各种分类头
         self.seg = SegHead(decoder.last_channel, seg_num, activation)
+        self.reg_num = reg_num
+        if not reg_num is None:
+            self.reg = RegHead(decoder.last_channel, reg_num)
         self.using_cls = using_cls
 
     def forward(self, input_tensor):

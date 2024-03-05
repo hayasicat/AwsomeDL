@@ -224,7 +224,7 @@ class TripleTrainer:
     def analys(self):
         for idx, inputs in enumerate(self.sample_loader):
 
-            if idx < 70:
+            if idx < 20:
                 continue
             for key, ipt in inputs.items():
                 inputs[key] = ipt.to(self.device)

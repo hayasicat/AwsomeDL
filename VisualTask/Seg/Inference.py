@@ -53,6 +53,7 @@ class SegInference():
         if not self.transform is None:
             img = self.transform(image=img)['image']
         img_tensor = img
+
         if not self.norm_transform is None:
             img_tensor = self.norm_transform(image=img_tensor)['image']
         img_tensor = torch.from_numpy(img_tensor).permute(2, 0, 1).unsqueeze(0).to(self.device)
@@ -70,18 +71,22 @@ if __name__ == '__main__':
     import cv2
     import matplotlib.pyplot as plt
     from Base.SegHead.Unet import Unet, UnetHead
+    from Base.SegHead.PAN import PAN, PANDecoder
     from Base.BackBone import ResNet34, ResNet18, EfficientNetV2S
     from Base.BackBone.TochvisionBackbone import TorchvisionResnet18
     from Transfer.VisualFLS.dataset import FLS_test_transforms, FLS_norm_transform
 
     # encoder = EfficientNetV2S(20)
     encoder = TorchvisionResnet18(2)
-    decoder = UnetHead(encoder.channels[::-1])
+    # decoder = UnetHead(encoder.channels[::-1])
 
     # decoder = UnetHead()
-    model = Unet(encoder, decoder, 3, 2, activation='')
+    # model = Unet(encoder, decoder, 3, 2, activation='')
+    decoder = PANDecoder(encoder.channels[::-1])
+    model = PAN(encoder, decoder, 3, reg_num=2, using_cls=True, activation='')
+
     # model.load_state_dict(torch.load('../../data/lockhole/multi_head/EFUnet_TC2/200_model.pth'))
-    model.load_state_dict(torch.load('../../data/lockhole/multi_head/torchUnet_TC4/last.pth'))
+    model.load_state_dict(torch.load('../../data/lockhole/multi_head/torchPan_TC4/last.pth'))
 
     model = model.to(torch.device("cuda:0"))
     model.eval()
