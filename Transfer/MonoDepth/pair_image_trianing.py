@@ -5,7 +5,7 @@
 # @File    : pair_image_trianing.py
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
 from Transfer.MonoDepth.MonoTrainer.TripleImages import TripleTrainer
 from Transfer.MonoDepth.MonoTrainer.PairImages import PairTrainer
@@ -14,6 +14,8 @@ from Transfer.MonoDepth.dataset import MonoDataset
 from Base.BackBone.STN import MonoDepthSTN, MonoDepthPair
 from Base.BackBone.EfficientNetV2 import EfficientNetV2S
 from Base.BackBone.ResNet import ResNet18, ResNet34
+from Base.BackBone.TochvisionBackbone import TorchvisionResnet18
+
 from Base.SegHead.DepthHead import DepthDecoder, DepthNet
 
 # data_root = r'/root/project/AwsomeDL/data/BowlingMono'
@@ -30,23 +32,26 @@ train_data = MonoDataset(fragment_path, train_file_path, 416, 896, coor_shift=[1
 
 # train_data = MonoDataset(data_root, train_file_path, 832, 1824)
 
-encoder = ResNet18(10, input_chans=3)
+# encoder = ResNet18(10, input_chans=3)
+encoder = TorchvisionResnet18(10, input_chans=3)
 depth_decoder = DepthDecoder(encoder.channels)
 depth_net = DepthNet(encoder, depth_decoder)
 # TODO: monodepth2预测出来的是两张图片两张深度，但是我这边就直接两张图片一个姿态
 
 # sc_depth方式训练
+# model = MonoDepthSTN(depth_net, ResNet18)
 model = MonoDepthSTN(depth_net, ResNet18)
+
 trainer = PairTrainer(train_data, model)
 # trainer.train()
 
 # 分析一下结果
-# model_path = r'/root/project/AwsomeDL/data/sc_depth/90_model.pth'
+# model_path = r'/root/project/AwsomeDL/data/sc_depth/without_pretrain_model.pth'
 # model_path = r'/root/project/AwsomeDL/data/monodepth/bucket_model.pth'
 # model_path = r'/root/project/AwsomeDL/data/monodepth/geometry_consistance.pth'
 
 # pair-model
-model_path = r'/root/project/AwsomeDL/data/sc_depth/90_model.pth'
-trainer.resume_from(model_path)
-trainer.analys()
+# model_path = r'/root/project/AwsomeDL/data/sc_depth/without_pretrain_model.pth'
+# trainer.resume_from(model_path)
+# trainer.analys()
 # trainer.eval()

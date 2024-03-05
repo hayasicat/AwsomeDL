@@ -5,7 +5,7 @@
 # @File    : Inference.py
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import cv2
 import torch
 import numpy as np
@@ -81,7 +81,7 @@ if __name__ == '__main__':
     # decoder = UnetHead()
     model = Unet(encoder, decoder, 3, 2, activation='')
     # model.load_state_dict(torch.load('../../data/lockhole/multi_head/EFUnet_TC2/200_model.pth'))
-    model.load_state_dict(torch.load('../../data/lockhole/multi_head/torchUnet_TC3/200_model.pth'))
+    model.load_state_dict(torch.load('../../data/lockhole/multi_head/torchUnet_TC4/last.pth'))
 
     model = model.to(torch.device("cuda:0"))
     model.eval()

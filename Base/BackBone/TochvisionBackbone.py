@@ -20,7 +20,8 @@ class TorchvisionResnet18(nn.Module):
         self.model = self.init_model(pretrained=pretrain)
         # 如果输入的通道不是3的话就替换一下
         if input_chans != 3:
-            self.model.conv1 = nn.Conv2d(input_chans, self.model.inplanes, kernel_size=7, stride=2, padding=3,
+            # inplace发生变化
+            self.model.conv1 = nn.Conv2d(input_chans, 64, kernel_size=7, stride=2, padding=3,
                                          bias=False)
         # 如果输出的类别不是１０００的话
         if num_cls != 1000:

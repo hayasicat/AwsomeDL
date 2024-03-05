@@ -140,7 +140,7 @@ class TripleTrainer:
             # print("第{}epoch，第{}层输出,loss为{}".format(cur_epoch, scale, current_loss))
         # weights = [0.1, 0.2, 0.3, 0.4]
         # TODO: 动态的权重
-        weights = [0.1, 0.1, 0.3, 0.5]
+        weights = [0.2, 0.2, 0.3, 0.3]
 
         return sum([w * l for w, l in zip(weights, total_loss)])
 

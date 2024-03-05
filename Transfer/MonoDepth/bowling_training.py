@@ -5,7 +5,7 @@
 # @File    : bowling_training.py
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 import torch
 from Transfer.MonoDepth.MonoTrainer.TripleImages import TripleTrainer
 from Transfer.MonoDepth.MonoTrainer.PairImages import PairTrainer
@@ -14,10 +14,10 @@ from Transfer.MonoDepth.dataset import MonoDataset
 from Base.BackBone.STN import MonoDepthSTN, MonoDepthPair
 from Base.BackBone.EfficientNetV2 import EfficientNetV2S
 from Base.BackBone.ResNet import ResNet18, ResNet34
+from Base.BackBone.TochvisionBackbone import TorchvisionResnet18
 from Base.SegHead.DepthHead import DepthDecoder, DepthNet
 
 data_root = r'/root/project/AwsomeDL/data/BowlingMono'
-
 # data_root = r'/root/project/AwsomeDL/data/BowlingMonoNew'
 
 train_file_path = os.path.join(data_root, r'bowling/train_files.txt')
@@ -37,8 +37,9 @@ train_data = MonoDataset(data_root, train_file_path, 416, 896, coor_shift=[16, 0
 # encoder = EfficientNetV2S(10, input_chans=3)
 # encoder = ResNet34(10, input_chans=3)
 
-encoder = ResNet18(10, input_chans=3)
-
+# encoder = ResNet18(10, input_chans=3)
+# 使用预训练的encoder
+encoder = TorchvisionResnet18(2, input_chans=3)
 depth_decoder = DepthDecoder(encoder.channels)
 depth_net = DepthNet(encoder, depth_decoder)
 # TODO: monodepth2预测出来的是两张图片两张深度，但是我这边就直接两张图片一个姿态
@@ -59,7 +60,7 @@ trainer.train()
 # model_path = r'/root/project/AwsomeDL/data/monodepth/total_fragment.pth'
 # model_path = r'/root/project/AwsomeDL/data/monodepth/temp_90_model.pth'
 
-# model_path = r'/root/project/AwsomeDL/data/monodepth/bucket_model.pth'
+# model_path = '/root/project/AwsomeDL/data/baseline/90_model.pth'
 # model_path = r'/root/project/AwsomeDL/data/monodepth/geometry_consistance.pth'
 
 

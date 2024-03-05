@@ -204,8 +204,8 @@ class MonoViewer():
     def create_video_saver(self, path):
         self.save_video_root = path
         # 创建两个句柄
-        raw_image_name = 'raw_image.mp4'
-        depth_name = 'depth.mp4'
+        raw_image_name = 'vision_raw_image.mp4'
+        depth_name = 'vision_depth.mp4'
         self.image_saver = VideoSaver(os.path.join(self.save_video_root, raw_image_name), 'raw', fps=10)
         self.depth_saver = VideoSaver(os.path.join(self.save_video_root, depth_name), 'raw', fps=10)
 

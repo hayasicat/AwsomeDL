@@ -28,7 +28,7 @@ val_dataset = FLSHybridDataset('/root/data/VisualFLS', is_crop=False, is_train=F
                                norm_transforms=FLS_norm_transform)
 
 # root_path = '../../data/lockhole/multi_head/UnetTotal'
-root_path = '../../data/lockhole/multi_head/torchUnet_TC3'
+root_path = '../../data/lockhole/multi_head/torchUnet_TC4'
 
 if not os.path.exists(root_path):
     os.makedirs(root_path)

@@ -4,8 +4,10 @@
 # @desc    : 
 # @File    : PairImages.py
 import os
-import torch.nn as nn
+import logging
+
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from torch.cuda.amp import autocast, GradScaler
@@ -13,6 +15,7 @@ from torch.cuda.amp import autocast, GradScaler
 from Transfer.MonoDepth.MonoUtils import disp_to_depth, view_syn, MonoPloter, MonoViewer
 from Transfer.MonoDepth.Losses.Loss import ReprojectLoss, EdgeSmoothLoss, AutoMask
 from Transfer.MonoDepth.MonoUtils.CameraTrans import transformation_from_parameters, get_sample_grid
+from Tools.Logger.my_logger import init_logger
 
 
 class PairTrainer():
@@ -67,10 +70,13 @@ class PairTrainer():
         if len(model_path) > 0:
             self.resume_from(model_path)
 
+        init_logger('/root/project/AwsomeDL/data/logs/pair_image_train.log')
+        self.logger = logging.getLogger('train')
+
     def train(self):
         for e in range(self.epochs):
             total_loss = self.train_step(e)
-            print('epoch is {}, train_loss is {}'.format(e, sum(total_loss) / (len(total_loss) + 1e-7)))
+            self.logger.info('epoch is {}, train_loss is {}'.format(e, sum(total_loss) / (len(total_loss) + 1e-7)))
             if e % 30 == 0 or e % 100 == 0:
                 self.save_checkpoint(e)
             # 测试的适合暂时不用
@@ -260,6 +266,7 @@ class PairTrainer():
         return shift_loss
 
     def save_checkpoint(self, e):
+        # 用来保存最优的
         self.model.eval()
         save_name = "{}_model.pth".format(e)
         if self.is_parallel:

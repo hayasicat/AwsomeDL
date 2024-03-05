@@ -4,6 +4,7 @@
 # @desc    : 
 # @File    : multi_head.py
 import os
+import logging
 
 import torch
 from .trainner import SegTrainner
@@ -11,6 +12,7 @@ from .trainner import SegTrainner
 from Base.Loss.FocalLoss import MyFocalLoss
 from Base.Loss.DiceLoss import MyDiceLoss
 from Base.Metrics.KP import KPDis
+from Tools.Logger.my_logger import init_logger
 
 
 class SegMultiHead(SegTrainner):
@@ -35,6 +37,13 @@ class SegMultiHead(SegTrainner):
         # 预训练权重可以缩短训练的时间
         self.sched = torch.optim.lr_scheduler.MultiStepLR(self.optim, milestones=[25, 45, 60, 75, 85, 93],
                                                           gamma=0.4)
+        init_logger('/root/project/AwsomeDL/data/logs/multihead.log')
+        self.logger = logging.getLogger('train')
+        self.logger.info(self.save_path)
+
+        # 减少保存的权重数量
+        self.last_miou = -1
+
     def loss(self, pred, ips):
         seg = ips['seg'].to(self.device)
         heatmap = ips['kp_heatmap'].to(self.device)
@@ -61,12 +70,12 @@ class SegMultiHead(SegTrainner):
             self.epochs += 1
         for e in range(self.epochs):
             total_loss = self.train_step()
-            print('epoch is {}, train_loss is {}'.format(e, sum(total_loss) / (len(total_loss) + 1e-7)))
+            self.logger.info('epoch is {}, train_loss is {}'.format(e, sum(total_loss) / (len(total_loss) + 1e-7)))
             self.sched.step()
             if e % 10 == 0:
-                self.save_checkpoints(e)
-                text_echo = self.val_step()
-                print('epoch is {}   '.format(e) + text_echo)
+                text_echo, miou = self.val_step()
+                self.logger.info('epoch is {}   '.format(e) + text_echo)
+                self.save_checkpoints(e, miou)
 
     def train_step(self):
         self.model.train()
@@ -112,16 +121,19 @@ class SegMultiHead(SegTrainner):
         distance = self.kp_metric.distances()
         text_echo = 'miou: {},distance:{}'.format(miou, distance)
         self.kp_metric.clearn()
-        return text_echo
+        return text_echo, miou
 
     def resume_from(self, model_path):
         self.model.load_state_dict(torch.load(model_path))
 
-    def save_checkpoints(self, e):
+    def save_checkpoints(self, e, miou=-1):
         self.model.eval()
-        save_name = "{}_model.pth".format(e)
         if self.is_parallel:
             model = self.model.module
         else:
             model = self.model
-        torch.save(model.state_dict(), os.path.join(self.save_path, save_name))
+        if miou > self.last_miou:
+            # 保存最好的
+            torch.save(model.state_dict(), os.path.join(self.save_path, 'best.pth'))
+        # 保存最后一次的
+        torch.save(model.state_dict(), os.path.join(self.save_path, 'last.pth'))

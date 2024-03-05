@@ -86,7 +86,6 @@ class LabelHandler:
         js_root = os.path.join(img_root, self.seg_save_path)
         for img_name in img_files:
             if 'tc' in img_name[:3]:
-                print(img_name)
                 processor = self.processor['TC']
             else:
                 processor = self.processor['YH']
