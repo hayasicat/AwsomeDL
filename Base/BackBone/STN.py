@@ -74,6 +74,7 @@ class MonoDepthSTN(nn.Module):
         encoder = pose_encoder(6, input_chans=6)
         # self.pose_net = PoseDecoder(encoder)
         # 一开始的初始化都给0
+        encoder.init_weights()
         self.pose_net = encoder
         # self.pose_net.fc.weight.data.zero_()
         # self.pose_net.fc.bias.data.copy_(torch.tensor([0.001, 0.001, 0.001, 0.001, 0.001, 0.001], dtype=torch.float))

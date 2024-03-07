@@ -21,6 +21,6 @@ need_cut_info = {
     'newnvr238_ch8_20230803000011_20230803105251': [60, 75],
 }
 
-handle_all_video(video_root, js_root, fragment_root, need_cut_info)
+# handle_all_video(video_root, js_root, fragment_root, need_cut_info)
 label_save_root = r'/root/data/BowlingMono/splits'
-kitti_label_gen(fragment_root, label_save_root, dataset_name='newnvr238_ch8_20230803000011_20230803105251', available_subfold=['newnvr238_ch8_20230803000011_20230803105251'])
+kitti_label_gen(fragment_root, label_save_root, dataset_name='newnvr238_ch8_20230803000011_2023080310525106', available_subfold=['newnvr238_ch8_20230803000011_20230803105251_0.6'])

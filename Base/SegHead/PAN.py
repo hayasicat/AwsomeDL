@@ -5,12 +5,12 @@
 # @File    : PAN.py
 from torch import nn
 import torch.nn.functional as F
-from Base.MyModule.Seg import FPA, GAU, SPFPA
+from Base.MyModule.Seg import FPA, GAU, SPFPA, ReduceGAU
 from Base.MyModule import SegHead, RegHead
 
 
 class PANDecoder(nn.Module):
-    def __init__(self, channels=[512, 256, 128, 64], decoder_channel=64):
+    def __init__(self, channels=[512, 256, 128, 64], decoder_channel=128):
         super().__init__()
         if len(channels) == 4:
             channels.append(channels[-1])
@@ -19,11 +19,13 @@ class PANDecoder(nn.Module):
         self.fpa = SPFPA(channels[0], decoder_channel)
         self.decoder0 = GAU(channels[1], decoder_channel)
         self.decoder1 = GAU(channels[2], decoder_channel)
-        # 最后几层给降采样
-        self.decoder2 = GAU(channels[3], decoder_channel)
-        self.decoder3 = GAU(channels[4], decoder_channel)
-        self.last_channel = decoder_channel
-        self.channels = [decoder_channel, decoder_channel, decoder_channel, decoder_channel, decoder_channel]
+        # 最后几层的channel减半
+        # self.decoder2 = GAU(channels[3], decoder_channel)
+        self.decoder2 = ReduceGAU(channels[3], decoder_channel // 2, decoder_channel)
+        self.decoder3 = GAU(channels[4], decoder_channel // 2)
+        self.last_channel = decoder_channel // 2
+        self.channels = [decoder_channel, decoder_channel, decoder_channel, decoder_channel // 2, decoder_channel // 2]
+        # self.init_weights()
 
     def get_stage(self):
         return [self.decoder0, self.decoder1, self.decoder2, self.decoder3]
@@ -43,6 +45,16 @@ class PANDecoder(nn.Module):
     def bottom_feature(self, bottom_feature):
         # 用来做底层特征加工
         return self.fpa(bottom_feature)
+
+    def init_weights(self):
+        # 初始化卷积和BatchNorm
+        for n, layer in self.named_modules():
+            if isinstance(layer, nn.Conv2d):
+                nn.init.kaiming_normal_(layer.weight, mode='fan_out', nonlinearity='relu')
+                # layer.bias.data.fill_(0.001)
+            elif isinstance(layer, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(layer.weight, 1)
+                nn.init.constant_(layer.bias, 0)
 
 
 class PAN(nn.Module):

@@ -8,11 +8,12 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from ..BasicModule import ConvBnAct, ChannelPool
+from ..BasicModule.ConvLayer import ConvBn
 
 
 class GAU(nn.Module):
     # Pyramid Attention Network
-    def __init__(self, input_channel, output_channel):
+    def __init__(self, input_channel, output_channel, **kwargs):
         super(GAU, self).__init__()
         self.decoder_branch = nn.Sequential(*[
             nn.AdaptiveAvgPool2d((1, 1)),
@@ -23,6 +24,18 @@ class GAU(nn.Module):
 
     def forward(self, x, skip):
         # 这里用
+        intern_feature = torch.mul(self.decoder_branch(x), self.encoder_branch(skip))
+        x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)
+        return intern_feature + x
+
+
+class ReduceGAU(GAU):
+    def __init__(self, input_channel, output_channel, dec_channel):
+        super().__init__(input_channel, output_channel)
+        self.reduce_conv = ConvBnAct(dec_channel, output_channel, kernel_size=3)
+
+    def forward(self, x, skip):
+        x = self.reduce_conv(x)
         intern_feature = torch.mul(self.decoder_branch(x), self.encoder_branch(skip))
         x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)
         return intern_feature + x
@@ -63,9 +76,9 @@ class FPA(nn.Module):
         self.down3 = ConvBnAct(int(ratio * input_channel), int(ratio * input_channel), kernel_size=3, stride=2)
 
         # 这边使用shortcut+reduce/或者这边可以使用共享的卷积
-        self.reduce_conv1 = ConvBnAct(2, 1, kernel_size=3, stride=1)
-        self.reduce_conv2 = ConvBnAct(2, 1, kernel_size=3, stride=1)
-        self.reduce_conv3 = ConvBnAct(2, 1, kernel_size=3, stride=1)
+        self.reduce_conv1 = ConvBn(2, 1, kernel_size=3, stride=1)
+        self.reduce_conv2 = ConvBn(2, 1, kernel_size=3, stride=1)
+        self.reduce_conv3 = ConvBn(2, 1, kernel_size=3, stride=1)
 
         self.spatial_pool = ChannelPool()
 
@@ -101,18 +114,21 @@ class SPFPA(nn.Module):
             ConvBnAct(input_channel, output_channel, act=nn.ReLU)
         ])
         self.mid_branch = ConvBnAct(input_channel, output_channel, kernel_size=1, padding=0)
-        self.down1 = ConvBnAct(input_channel, int(ratio * input_channel), kernel_size=3, stride=2)
-        self.reduce_conv = ConvBnAct(2, 1, kernel_size=3, stride=1)
+
+        self.down1 = ConvBnAct(input_channel, int(ratio * input_channel), kernel_size=3, stride=1, act=nn.ELU)
+
+        self.reduce_conv = ConvBn(2, 1, kernel_size=3, stride=1, act=nn.ELU)
         self.spatial_pool = ChannelPool()
 
     def forward(self, x):
         gp = self.GP(x)
         # 中间的一层
         mid = self.mid_branch(x)
-        # # 底下空间注意力那一层
+        # 底下空间注意力那一层
         d1 = self.down1(x)
-        # 降低通道
-        sam = self.reduce_conv(self.spatial_pool(d1))
-        sam = F.interpolate(sam, scale_factor=2, mode='bilinear', align_corners=True)
+        # 不降低通道直接来一个空间注意力
+        u1 = self.reduce_conv(self.spatial_pool(d1))
+        sam = u1
+        # sam = F.interpolate(sam, scale_factor=2, mode='bilinear', align_corners=True)
         mid = torch.mul(torch.sigmoid(sam), mid)
         return mid + gp

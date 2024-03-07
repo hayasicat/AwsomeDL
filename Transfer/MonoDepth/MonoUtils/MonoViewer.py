@@ -21,9 +21,13 @@ from Tools.Save4Video.video_saver import VideoSaver
 
 
 class MonoPloter():
-    def __init__(self, depth_range=[1, 10]):
+    def __init__(self, depth_range=[1, 10], use_plt=True, img_root='', **kwargs):
         self.depth_range = depth_range
-        pass
+        self.use_plt = use_plt
+        self.show_idx = 0
+        self.img_root = img_root
+        if not os.path.exists(self.img_root):
+            os.makedirs(self.img_root)
 
     def show_depth(self, depth, is_show_normal=True):
         if len(depth.size()) > 3:
@@ -61,8 +65,12 @@ class MonoPloter():
         return new_image
 
     def show(self, image):
-        plt.imshow(image)
-        plt.show()
+        if self.use_plt:
+            plt.imshow(image)
+            plt.show()
+        elif len(self.img_root) > 0:
+            cv2.imwrite(os.path.join(self.img_root, str(self.show_idx) + '.png'), image)
+            self.show_idx += 1
 
     def calculate_hist(self, input_tensor):
         x_dis = np.linspace(0, 1, 50)
@@ -72,11 +80,12 @@ class MonoPloter():
 
 
 class MonoViewer():
-    def __init__(self, model, min_depth=3, max_depth=10, using_sc_depth=False, using_auto_mask=False):
+    def __init__(self, model, min_depth=3, max_depth=10, using_sc_depth=False, using_auto_mask=False, use_plt=True,
+                 save_root=''):
         self.model = model
         self.min_depth = min_depth
         self.max_depth = max_depth
-        self.plotter = MonoPloter([min_depth, max_depth])
+        self.plotter = MonoPloter([min_depth, max_depth], use_plt=use_plt, img_root=save_root)
         self.multi_scale = 4
         self.auto_mask = AutoMask()
         self.using_sc_depth = using_sc_depth
@@ -120,19 +129,19 @@ class MonoViewer():
             # 添加整个变化矩阵
             trans = transformation_from_parameters(pose[..., :3], pose[..., 3:])
             cam_trans.append(trans)
+
         # 通过前面的图片重建后面的图片
         pre_depth_map = self.model.depth_map((pre_images[0] - 0.45) / 0.225)[0]
         pre2cur_pose = self.model.get_pose((pre_images[0] - 0.45) / 0.225, target_x)
         pre2cur_trans = transformation_from_parameters(pre2cur_pose[..., :3], pre2cur_pose[..., 3:])
         pre2next = torch.matmul(pre2cur_trans, cam_trans[0])
-        print(pre2next, pre2cur_trans, cam_trans)
         _, pre_depth = disp_to_depth(pre_depth_map, self.min_depth, self.max_depth)
         render_img = self.plotter.show_depth(pre_depth, False)
         self.plotter.show(render_img)
         grids, computed_depth = get_sample_grid(pre_depth, Ks[0], inv_Ks[0], pre2next)
         source2target = view_syn(next_images[0], grids)
-        self.plotter.show_image_tensor(pre_images[0] * 255)
-        self.plotter.show_image_tensor(source2target * 255)
+        # self.plotter.show_image_tensor(pre_images[0] * 255)
+        # self.plotter.show_image_tensor(source2target * 255)
 
         # 可是每个深度图
         for s in range(start_scale, self.multi_scale):
@@ -173,7 +182,7 @@ class MonoViewer():
         mean_loss = next_loss.mean([1, 2])
         loss_map_from = F.one_hot(idx, num_classes=3) * 255
         loss_map_from = loss_map_from.squeeze(0).permute(2, 0, 1)
-        self.plotter.calculate_hist(next_loss)
+        # self.plotter.calculate_hist(next_loss)
         self.plotter.show_reproject_loss(loss_map_from)
         self.plotter.show_reproject_loss(next_loss)
         # 损失函数分析，区块loss解决

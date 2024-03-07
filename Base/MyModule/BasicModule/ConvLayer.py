@@ -23,3 +23,11 @@ class ConvBnAct(nn.Module):
     def forward(self, x):
         return self.act(self.bn(self.conv(x)))
 
+
+# todo: 这玩意可以合并
+class ConvBn(ConvBnAct):
+    def __init__(self, input_channel, output_channel, kernel_size=3, stride=1, padding=1, act=nn.ReLU):
+        super().__init__(input_channel, output_channel, kernel_size, stride, padding)
+
+    def forward(self, x):
+        return self.bn(self.conv(x))

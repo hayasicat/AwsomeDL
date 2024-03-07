@@ -36,7 +36,8 @@ class MonoDataset(data.Dataset):
         self.width = width
         self.num_scale = num_scale
         self.data_root = data_root
-        self.filenames = open(image_file).readlines()
+
+        self.filenames = self.get_filenames(image_file)
         self.resize_trans = {}
         for i in range(self.num_scale):
             s = 2 ** i
@@ -54,6 +55,12 @@ class MonoDataset(data.Dataset):
             with open(pseudo_path, 'r', encoding='utf-8') as f:
                 self.pseudo_info = json.loads(f.read().strip())
         self.augment = transforms.ColorJitter((0.8, 1.2), (0.8, 1.2), (0.8, 1.2), (-0.1, 0.1))
+
+    def get_filenames(self, image_file):
+        return open(image_file).readlines()
+
+    def get_read_file(self, index):
+        return self.filenames[index].strip().split(' ')
 
     def reset_input_image_size(self, height, width, x_shift, y_shift):
         Kx = self.K[0, :] * self.org_width
@@ -85,7 +92,7 @@ class MonoDataset(data.Dataset):
         :param index:
         :return:
         """
-        subfold, frame_idx = self.filenames[index].strip().split(' ')
+        subfold, frame_idx = self.get_read_file(index)
         inputs = {}
         for rank in self.frame_index:
             image_name = 'prime' + str(rank) + '_0'
@@ -138,13 +145,38 @@ class MonoDataset(data.Dataset):
         return inputs
 
 
+class MonoDatasetFold(MonoDataset):
+    def __init__(self, data_root, image_file, height, width, num_scale=4, is_train=True, img_ext='.png',
+                 coor_shift=[0, 0]):
+        super().__init__(data_root, image_file, height, width, num_scale=num_scale, is_train=is_train, img_ext=img_ext,
+                         coor_shift=coor_shift)
+        self.sub_fold = image_file
+
+    def get_filenames(self, image_file):
+        sub_root = os.path.join(self.data_root, image_file)
+        filenames = os.listdir(sub_root)
+        # 肯定是要大于等于三个样本的
+        filenames = sorted(filenames, key=lambda x: eval(x.rsplit('.')[0]))[1:-1]
+        return filenames
+
+    def get_read_file(self, index):
+        return self.sub_fold, self.filenames[index].rsplit('.')[0]
+
+
 if __name__ == "__main__":
     r = r'/root/project/AwsomeDL/data/BowlingMono'
     f_p = os.path.join(r, r'bowling/train_files.txt')
     d = MonoDataset(r, f_p, 416, 896, coor_shift=[16, 0])
     # d = MonoDataset(r, f_p, 832, 1824)
-    for i in range(30):
-        o = d[i]
+    # for i in range(30):
+    #     o = d[i]
+
+    d1 = MonoDatasetFold('/root/data/BowlingMono/fragments', 'newnvr238_ch8_20230803000011_20230803105251/image_68',
+                         416, 896, coor_shift=[16, 0])
+    for i in range(5):
+        print(d1[i])
+    # 测试不带txt版本的怎么训起来
+
     from torch.utils.data import DataLoader
     #
     # for k, v in o.items():

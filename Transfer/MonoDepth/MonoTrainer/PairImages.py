@@ -21,7 +21,7 @@ from Tools.Logger.my_logger import init_logger
 class PairTrainer():
     weight_decay = 5e-4
     epochs = 100
-    batch_size = 4
+    batch_size = 8
     num_workers = 4
     multi_scales = 4
     s_weight = 1e-2
@@ -30,25 +30,27 @@ class PairTrainer():
     # 收敛以后T值的大小跟min_depth是有关系的
     min_depth = 2
 
-    def __init__(self, train_dataset, model, model_path='', **kwargs):
+    def __init__(self, train_dataset, model, model_path='', save_pth='/root/project/AwsomeDL/data/sc_depth',
+                 log_path='/root/project/AwsomeDL/data/logs/pair_image_train.log', is_init=False, use_plt=True,
+                 img_save_root='', **kwargs):
         # 这边固定好数值
         for k_name, value in kwargs.items():
             setattr(self, k_name, value)
         # 训练
         self.train_loader = DataLoader(train_dataset, self.batch_size, shuffle=True, num_workers=8)
         self.sample_loader = DataLoader(train_dataset, 1)
-        self.opt = torch.optim.Adam([{'params': model.depth_net.parameters()},
-                                     {'params': model.pose_net.parameters(), 'lr': 1e-4}], lr=8 * 1e-4,
-                                    weight_decay=5e-4)
-        self.sched = torch.optim.lr_scheduler.MultiStepLR(
-            self.opt, milestones=[50, 80, 166], gamma=0.5)
+        # self.opt = torch.optim.Adam([{'params': model.depth_net.parameters()},
+        #                              {'params': model.pose_net.parameters(), 'lr': 1e-4}], lr=5 * 1e-4,
+        #                             weight_decay=5e-4)
+        # self.sched = torch.optim.lr_scheduler.MultiStepLR(
+        #     self.opt, milestones=[50, 80, 166], gamma=0.5)
 
         # 位姿网络和
         self.pose_opt = torch.optim.Adam(model.pose_net.parameters(), lr=1e-4, weight_decay=5e-4)
         self.depth_opt = torch.optim.Adam(model.depth_net.parameters(), lr=5 * 1e-4, weight_decay=5e-4)
         self.pose_sched = torch.optim.lr_scheduler.MultiStepLR(self.pose_opt, milestones=[30, 50, 75], gamma=0.5)
+        # self.depth_sched = torch.optim.lr_scheduler.MultiStepLR(self.depth_opt, milestones=[40, 60, 80], gamma=0.5)
         self.depth_sched = torch.optim.lr_scheduler.MultiStepLR(self.depth_opt, milestones=[40, 60, 80], gamma=0.5)
-
         # 这两个loss为主
         self.reproject_l = ReprojectLoss()
         self.edge_smooth_l = EdgeSmoothLoss()
@@ -60,31 +62,33 @@ class PairTrainer():
         self.model = self.model.to(self.device)
         # self.viewer = MonoPloter([self.min_depth, self.max_depth])
         # 限制
-        self.viewer = MonoViewer(self.model, self.min_depth, self.max_depth, using_auto_mask=True, using_sc_depth=True)
+        self.viewer = MonoViewer(self.model, self.min_depth, self.max_depth, using_auto_mask=False, using_sc_depth=False,
+                                 use_plt=use_plt, save_root=img_save_root)
         self.is_parallel = False
-        self.save_path = '/root/project/AwsomeDL/data/sc_depth'
-        if not os.path.exists(self.save_path):
+        self.save_path = save_pth
+        if not os.path.exists(self.save_path) and len(self.save_path) > 0:
             os.makedirs(self.save_path)
         self.scaler = GradScaler()
 
         if len(model_path) > 0:
             self.resume_from(model_path)
-
-        init_logger('/root/project/AwsomeDL/data/logs/pair_image_train.log')
+        if not is_init:
+            init_logger(log_path)
         self.logger = logging.getLogger('train')
+        self.last_loss = 1000
 
     def train(self):
         for e in range(self.epochs):
             total_loss = self.train_step(e)
             self.logger.info('epoch is {}, train_loss is {}'.format(e, sum(total_loss) / (len(total_loss) + 1e-7)))
-            if e % 30 == 0 or e % 100 == 0:
-                self.save_checkpoint(e)
+            train_loss = sum(total_loss) / (len(total_loss) + 1e-7)
+            self.save_checkpoint(e, train_loss)
             # 测试的适合暂时不用
             # self.sched.step()
             self.pose_sched.step()
             self.depth_sched.step()
 
-    def compute_loss(self, depth_maps, poses, inputs, weights=[0.3, 0.3, 0.2, 0.2]):
+    def compute_loss(self, depth_maps, poses, inputs, weights=[0.1, 0.1, 0.3, 0.5]):
         # 重建图片，然后计算loss
         total_loss = []
         refers_pose, next_pose, cur_pose = poses
@@ -197,9 +201,9 @@ class PairTrainer():
             cur_image_0 = inputs['prime0_0aug']
             pre_image_0 = inputs['prime-1_0aug']
             next_image_0 = inputs['prime1_0aug']
-
+            self.pose_opt.zero_grad()
+            self.depth_opt.zero_grad()
             with autocast():
-                self.opt.zero_grad()
                 # 参数变换
                 depth_maps, poses = self.model.multi_depth(pre_image_0, cur_image_0, next_image_0)
                 # 给隔开看看
@@ -265,49 +269,71 @@ class PairTrainer():
         #     shift_loss.append(0.1 * neg_loss)
         return shift_loss
 
-    def save_checkpoint(self, e):
+    def save_checkpoint(self, e, loss=1000):
         # 用来保存最优的
         self.model.eval()
-        save_name = "{}_model.pth".format(e)
+        # 不给保存地址就不保存
+        if len(self.save_path) == 0:
+            return 0
         if self.is_parallel:
             model = self.model.module
         else:
             model = self.model
-        torch.save(model.state_dict(), os.path.join(self.save_path, save_name))
+        if loss > self.last_loss:
+            # 保存最好的
+            torch.save(model.state_dict(), os.path.join(self.save_path, 'best.pth'))
+        # 保存最后一次的
+        torch.save(model.state_dict(), os.path.join(self.save_path, 'last.pth'))
         self.model.train()
+        self.last_loss = loss
 
     def visual_result(self, inputs):
         self.viewer.update_model(self.model)
         self.viewer.visual_syn_image(inputs, is_show_pred=False, is_show_next=True, start_scale=0)
 
     def analys(self):
-        for idx, inputs in enumerate(self.sample_loader):
-            if idx < 50:
-                continue
-            for key, ipt in inputs.items():
-                inputs[key] = ipt.to(self.device)
-            self.visual_result(inputs)
-            break
+        self.model.eval()
+        with torch.no_grad():
+            for idx, inputs in enumerate(self.sample_loader):
+                if idx < 0:
+                    continue
+                for key, ipt in inputs.items():
+                    inputs[key] = ipt.to(self.device)
+                self.visual_result(inputs)
+                break
 
     def eval(self):
         self.model.eval()
-        for idx, inputs in enumerate(self.sample_loader):
-            for key, ipt in inputs.items():
-                inputs[key] = ipt.to(self.device)
-            cur_image_0 = inputs['prime0_0']
-            pre_image_0 = inputs['prime-1_0']
-            next_image_0 = inputs['prime1_0']
-            # 参数变换
-            depth_maps, poses = self.model.multi_depth(pre_image_0, cur_image_0, next_image_0)
-            # 给隔开看看
-            cur_depth_maps, pre_depth_maps, nex_depth_maps = depth_maps
-            total_loss = self.compute_loss(depth_maps, poses, inputs)
-            print(total_loss, poses[0])
+        total_loss = []
+        with torch.no_grad():
+            for idx, inputs in enumerate(self.sample_loader):
+                for key, ipt in inputs.items():
+                    inputs[key] = ipt.to(self.device)
+                cur_image_0 = inputs['prime0_0']
+                pre_image_0 = inputs['prime-1_0']
+                next_image_0 = inputs['prime1_0']
+                # 参数变换
+                depth_maps, poses = self.model.multi_depth(pre_image_0, cur_image_0, next_image_0)
+                # 给隔开看看
+                img_loss = self.compute_loss(depth_maps, poses, inputs)
+                total_loss.append(img_loss)
+            # 返回一个结果
+        return sum(total_loss) / (len(total_loss) + 1e-7)
 
     def resume_from(self, model_path):
         self.model.load_state_dict(torch.load(model_path))
         self.model.to(self.device)
         print("resum from {}".format(model_path))
+
+    def recorder(self):
+        self.model.eval()
+        self.viewer.update_model(self.model)
+        self.viewer.create_video_saver('/root/project/AwsomeDL/data/sc_depth')
+        for idx, inputs in enumerate(self.sample_loader):
+            for key, ipt in inputs.items():
+                inputs[key] = ipt.to(self.device)
+            self.viewer.save_video(inputs)
+        self.viewer.stop_recorder()
 
 
 reproject_loss = ReprojectLoss()
@@ -356,8 +382,11 @@ def compute_auto_mask_loss(cur_img, refer_img, cur_depth, refer_depth, pose_tran
     valid_mask = 1 - valid_mask.float()
     # 用来控制相机静止但是到处飞得物体
     photo_loss = loss_backend(syn_cur, cur_img, mask, using_mean=False)
+
     photo_loss = valid_mask * photo_loss
     photo_loss = photo_loss.sum(dim=[1, 2]) / valid_mask.sum(dim=[1, 2])
+
+    # photo_loss = photo_loss.mean(dim=[1, 2])
     diff_depth = diff_depth.sum(dim=[1, 2]) / valid_mask.sum(dim=[1, 2])
     # photo_loss = (weight_mask * photo_loss).mean([1, 2])
     return photo_loss, diff_depth

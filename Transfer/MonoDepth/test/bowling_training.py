@@ -5,7 +5,7 @@
 # @File    : bowling_training.py
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 import torch
 from Transfer.MonoDepth.MonoTrainer.TripleImages import TripleTrainer
 from Transfer.MonoDepth.MonoTrainer.PairImages import PairTrainer
@@ -16,6 +16,8 @@ from Base.BackBone.EfficientNetV2 import EfficientNetV2S
 from Base.BackBone.ResNet import ResNet18, ResNet34
 from Base.BackBone.TochvisionBackbone import TorchvisionResnet18
 from Base.SegHead.DepthHead import DepthDecoder, DepthNet
+from Base.SegHead.MonoDepth import DepthHead, MonoDepth
+from Base.SegHead.PAN import PANDecoder
 
 data_root = r'/root/project/AwsomeDL/data/BowlingMono'
 # data_root = r'/root/project/AwsomeDL/data/BowlingMonoNew'
@@ -39,14 +41,17 @@ train_data = MonoDataset(data_root, train_file_path, 416, 896, coor_shift=[16, 0
 
 # encoder = ResNet18(10, input_chans=3)
 # 使用预训练的encoder
-encoder = TorchvisionResnet18(10, input_chans=3)
-depth_decoder = DepthDecoder(encoder.channels)
-depth_net = DepthNet(encoder, depth_decoder)
+encoder = TorchvisionResnet18(2, input_chans=3)
+depth_decoder = PANDecoder(encoder.channels[::-1])
+depth_net = MonoDepth(encoder, depth_decoder)
+
+# depth_decoder = DepthDecoder(encoder.channels)
+# depth_net = DepthNet(encoder, depth_decoder)
 # TODO: monodepth2预测出来的是两张图片两张深度，但是我这边就直接两张图片一个姿态
 
 # 不能那比较难收敛的轻量级网络来训姿态估计网络
 # model = MonoDepthSTN(depth_net, ResNet18)
-model = MonoDepthSTN(depth_net, TorchvisionResnet18)
+model = MonoDepthSTN(depth_net, ResNet18)
 
 trainer = TripleTrainer(train_data, model, is_parallel=False)
 # trainer.train()
@@ -65,7 +70,7 @@ trainer = TripleTrainer(train_data, model, is_parallel=False)
 
 
 # pair-model
-model_path = r'/root/project/AwsomeDL/data/baseline/torchvision.pth'
-trainer.resume_from(model_path)
-trainer.analys()
+# model_path = r'/root/project/AwsomeDL/data/baseline/90_model.pth'
+# trainer.resume_from(model_path)
+# trainer.analys()
 # trainer.recorder()

@@ -52,6 +52,7 @@ def cut_and_save(video_path, js_path, save_path, start_idx=0, end_idx=100000, *a
     :return:
     """
     detector = SCDepthDetector(0.5)
+
     fragment_saver = MonoDepthVideoFramgment(save_path)
     activate_interval = JosnParser(js_path).read()
     video_stream = CV2VideoObject(video_path)

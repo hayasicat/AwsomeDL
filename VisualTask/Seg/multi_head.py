@@ -139,3 +139,4 @@ class SegMultiHead(SegTrainner):
             torch.save(model.state_dict(), os.path.join(self.save_path, 'best.pth'))
         # 保存最后一次的
         torch.save(model.state_dict(), os.path.join(self.save_path, 'last.pth'))
+        self.model.train()

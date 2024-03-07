@@ -222,9 +222,9 @@ class TripleTrainer:
         self.viewer.visual_syn_image(input_info, False, True, start_scale=0)
 
     def analys(self):
+        self.model.eval()
         for idx, inputs in enumerate(self.sample_loader):
-
-            if idx < 20:
+            if idx < 0:
                 continue
             for key, ipt in inputs.items():
                 inputs[key] = ipt.to(self.device)

@@ -14,6 +14,7 @@ class DepthHead(nn.Module):
         # 修正一下深度的head需要这样子
         self.conv = nn.Sequential(*[
             nn.Conv2d(input_channel, output_channel, (3, 3), padding=1),
+            # 为了和Unet有一个对比实验
             nn.Sigmoid()
         ])
 
@@ -26,6 +27,17 @@ class DepthHead(nn.Module):
         x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)
         return self.conv(x)
 
+    def init_weights(self):
+        # 初始化卷积和BatchNorm
+        for n, layer in self.named_modules():
+            if isinstance(layer, nn.Conv2d):
+                nn.init.xavier_normal_(layer.weight)
+                # nn.init.kaiming_normal_(layer.weight, mode='fan_out', nonlinearity='relu')
+                # layer.bias.data.fill_(0.001)
+            elif isinstance(layer, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(layer.weight, 1)
+                nn.init.constant_(layer.bias, 0)
+
 
 class MonoDepth(nn.Module):
     def __init__(self, encoder, decoder):
@@ -37,9 +49,15 @@ class MonoDepth(nn.Module):
         self.depth_head2 = DepthHead(self.decoder.channels[2], 1)
         self.depth_head3 = DepthHead(self.decoder.channels[3], 1)
         self.depth_head4 = DepthHead(self.decoder.channels[4], 1)
+        # self.init_weights()
 
     def get_depth_heads(self):
         return [self.depth_head1, self.depth_head2, self.depth_head3, self.depth_head3]
+
+    def init_weights(self):
+        depth_heads = self.get_depth_heads()
+        for d in depth_heads:
+            d.init_weights()
 
     def forward(self, input_tensor):
         # 得到encoder的特征图

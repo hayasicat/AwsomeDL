@@ -50,5 +50,5 @@ model = PAN(encoder, decoder, 3, reg_num=2, using_cls=True, activation='')
 # flops, params = profile(model, (torch.randn(2, 3, 512, 512),))
 # print("flops is {},params is {}".format(flops, params))
 
-trainner = SegMultiHead(train_dataset, val_dataset, model, 3, root_path, lr=0.0001, batch_size=24)
+trainner = SegMultiHead(train_dataset, val_dataset, model, 3, root_path, lr=0.0001, batch_size=12)
 trainner.train()

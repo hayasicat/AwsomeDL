@@ -1,1 +1,1 @@
-from .ShortCut import GAU, FPA, SPFPA
+from .ShortCut import GAU, FPA, SPFPA, ReduceGAU
