@@ -26,6 +26,9 @@ class LabelMeFormatParser:
         img_root, img_name = os.path.split(img_path)
         suffix = img_name.rsplit('.')[-1]
         js_path = img_path.replace('.' + suffix, '.json')
+        if not os.path.exists(js_path):
+            print("{} has not label".format(js_path))
+            return js_path, img_path, []
         js_ann = json.loads(open(js_path, 'r', encoding='utf-8').read())
         shapes = js_ann['shapes']
         for s in shapes:

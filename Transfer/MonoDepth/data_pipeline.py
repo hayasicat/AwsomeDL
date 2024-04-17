@@ -8,6 +8,7 @@ from DataProcess.save_moving_fragment import handle_all_video, kitti_label_gen
 video_root = r'/root/data/BowlingMono'
 js_root = r'/root/data/BowlingMono/finish/'
 fragment_root = r'/root/data/BowlingMono/fragments'
+
 # need_cut_info = {
 #     'NVR_ch8_20230729070938_20230729192059': [80, 10000],
 #     'NVR_ch8_20230726073037_20230726220139': [0, 140],
@@ -16,11 +17,14 @@ fragment_root = r'/root/data/BowlingMono/fragments'
 #     'newnvr238_ch8_20230803000011_20230803105251': [60, 75],
 #     'newnvr238_ch8_20230802000140_20230802115638': [80, 10000]
 # }
-need_cut_info = {
 
-    'newnvr238_ch8_20230803000011_20230803105251': [60, 75],
+
+need_cut_info = {
+    # 对 59这个视频重新采样
+    'NVR_ch8_20230729070938_20230729192059': [80, 10000],
+    # 'newnvr238_ch8_20230803000011_20230803105251': [60, 75],
 }
 
-# handle_all_video(video_root, js_root, fragment_root, need_cut_info)
-label_save_root = r'/root/data/BowlingMono/splits'
-kitti_label_gen(fragment_root, label_save_root, dataset_name='newnvr238_ch8_20230803000011_2023080310525106', available_subfold=['newnvr238_ch8_20230803000011_20230803105251_0.6'])
+handle_all_video(video_root, js_root, fragment_root, need_cut_info)
+# label_save_root = r'/root/data/BowlingMono/splits'
+# kitti_label_gen(fragment_root, label_save_root, dataset_name='newnvr238_ch8_20230803000011_2023080310525106', available_subfold=['newnvr238_ch8_20230803000011_20230803105251_0.6'])

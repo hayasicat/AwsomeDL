@@ -21,7 +21,7 @@ from Tools.Logger.my_logger import init_logger
 class PairTrainer():
     weight_decay = 5e-4
     epochs = 100
-    batch_size = 8
+    batch_size = 6
     num_workers = 4
     multi_scales = 4
     s_weight = 1e-2
@@ -48,9 +48,9 @@ class PairTrainer():
         # 位姿网络和
         self.pose_opt = torch.optim.Adam(model.pose_net.parameters(), lr=1e-4, weight_decay=5e-4)
         self.depth_opt = torch.optim.Adam(model.depth_net.parameters(), lr=5 * 1e-4, weight_decay=5e-4)
-        self.pose_sched = torch.optim.lr_scheduler.MultiStepLR(self.pose_opt, milestones=[30, 50, 75], gamma=0.5)
+        self.pose_sched = torch.optim.lr_scheduler.MultiStepLR(self.pose_opt, milestones=[30, 50, 75], gamma=0.4)
         # self.depth_sched = torch.optim.lr_scheduler.MultiStepLR(self.depth_opt, milestones=[40, 60, 80], gamma=0.5)
-        self.depth_sched = torch.optim.lr_scheduler.MultiStepLR(self.depth_opt, milestones=[40, 60, 80], gamma=0.5)
+        self.depth_sched = torch.optim.lr_scheduler.MultiStepLR(self.depth_opt, milestones=[40, 60, 80], gamma=0.4)
         # 这两个loss为主
         self.reproject_l = ReprojectLoss()
         self.edge_smooth_l = EdgeSmoothLoss()
@@ -62,7 +62,8 @@ class PairTrainer():
         self.model = self.model.to(self.device)
         # self.viewer = MonoPloter([self.min_depth, self.max_depth])
         # 限制
-        self.viewer = MonoViewer(self.model, self.min_depth, self.max_depth, using_auto_mask=False, using_sc_depth=False,
+        self.viewer = MonoViewer(self.model, self.min_depth, self.max_depth, using_auto_mask=False,
+                                 using_sc_depth=False,
                                  use_plt=use_plt, save_root=img_save_root)
         self.is_parallel = False
         self.save_path = save_pth
@@ -88,10 +89,10 @@ class PairTrainer():
             self.pose_sched.step()
             self.depth_sched.step()
 
-    def compute_loss(self, depth_maps, poses, inputs, weights=[0.1, 0.1, 0.3, 0.5]):
+    def compute_loss(self, depth_maps, poses, inputs, weights=[0.2, 0.2, 0.2, 0.4]):
         # 重建图片，然后计算loss
         total_loss = []
-        refers_pose, next_pose, cur_pose = poses
+        refers_pose, next_pose = poses
         cur_depth_map, pre_depth_map, nex_depth_map = depth_maps
 
         cur_images = [inputs['prime0_{}'.format(i)] for i in range(len(cur_depth_map))]
@@ -103,10 +104,10 @@ class PairTrainer():
 
         cur2next = transformation_from_parameters(next_pose[..., :3], next_pose[..., 3:])
 
-        pre2cur = transformation_from_parameters(refers_pose[..., :3], refers_pose[..., 3:])
-        next2cur = transformation_from_parameters(next_pose[..., :3], next_pose[..., 3:], True)
-        # 直接通过前一张图片重建后一张图片
-        pre2next = torch.matmul(pre2cur, cur2next)
+        # pre2cur = transformation_from_parameters(refers_pose[..., :3], refers_pose[..., 3:])
+        # next2cur = transformation_from_parameters(next_pose[..., :3], next_pose[..., 3:], True)
+        # # 直接通过前一张图片重建后一张图片
+        # pre2next = torch.matmul(pre2cur, cur2next)
 
         # 算一个直接pre到
 
@@ -141,18 +142,8 @@ class PairTrainer():
             photo_loss_n2c, diff_depth_n2c = compute_auto_mask_loss(cur_img, next_img, cur_depth, next_depth,
                                                                     cur2next, K, inv_K, self.auto_mask, mask)
             # 加一下重投影误差
-            # photo_loss_c2p, diff_depth_c2p = compute_auto_mask_loss(pre_img, cur_img, pre_depth, cur_depth,
-            #                                                         pre2cur, K, inv_K, self.auto_mask, mask)
-            # photo_loss_c2n, diff_depth_c2n = compute_auto_mask_loss(next_img, cur_img, next_depth, cur_depth,
-            #                                                         next2cur, K, inv_K, self.auto_mask, mask)
-
-            # photo_loss_p2n, diff_depth_p2n = compute_auto_mask_loss(pre_img, next_img, pre_depth, next_depth,
-            #                                                         pre2next, K, inv_K, self.auto_mask, mask)
-            # print(photo_loss_p2c, photo_loss_p2n, diff_depth_p2n, diff_depth_p2c)
             photo_loss = (photo_loss_p2c + photo_loss_n2c)
             diff_depth = (diff_depth_n2c + diff_depth_p2c)
-            # print(photo_loss_n2c.size(), diff_depth_n2c.mean([1, 2, 3]).size(),diff_depth_n2c.mean([1, 2, 3]))
-            # print(diff_depth_n2c.mean([1, 2, 3]), photo_loss_p2c)
             smooth_l = self.edge_smooth_l(cur_depth, cur_img)
 
             # 加上一致性损失看看结果
@@ -160,9 +151,8 @@ class PairTrainer():
             #                0.01 * diff_depth_n2c + 0.01 * diff_depth_p2c
             current_loss = photo_loss + self.s_weight * smooth_l + 0.01 * diff_depth
             total_loss.append(current_loss)
+        print(total_loss)
         # 通过不同的权重来解决这个问题
-        # print(total_loss)
-        # return sum(total_loss)
         return sum([w * l for w, l in zip(weights, total_loss)])
 
     def compute_depth_geometry_consistency(self, depth_maps):
@@ -201,6 +191,9 @@ class PairTrainer():
             cur_image_0 = inputs['prime0_0aug']
             pre_image_0 = inputs['prime-1_0aug']
             next_image_0 = inputs['prime1_0aug']
+            b, c, h, w = cur_image_0.size()
+            if b <= 1:
+                continue
             self.pose_opt.zero_grad()
             self.depth_opt.zero_grad()
             with autocast():
@@ -212,25 +205,27 @@ class PairTrainer():
                 # total_loss = self.compute_loss(cur_depth_map, refers_depth_maps, inputs, pose_trans, inv_trans)
                 total_loss = self.compute_loss(depth_maps, poses, inputs)
 
-                geometry_loss = self.compute_depth_geometry_consistency(cur_depth_maps)
+                # geometry_loss = self.compute_depth_geometry_consistency(cur_depth_maps)
                 # 计算一下余弦距离
 
                 # 几何一致性+ 变换损失，强行约束最上层的深度图收敛
                 # TODO: 深度图确实比较一致了，但是解决不了unstable的问题
-                total_loss = (0.97 * total_loss + 0.03 * geometry_loss)
+                # total_loss = (0.97 * total_loss + 0.03 * geometry_loss)
+
                 total_loss = total_loss.mean()
-                train_loss.append(total_loss.detach().cpu().numpy())
-                if e <= 15:
-                    # 看看是不是不同一个方向就GG了啊
-                    shift_loss = self.compute_pose_pseudo_loss(inputs, poses)
-                    if len(shift_loss) > 0:
-                        total_loss = 0.3 * sum(shift_loss) / len(shift_loss) + total_loss
+                # if e <= 15:
+                #     # 看看是不是不同一个方向就GG了啊
+                #     shift_loss = self.compute_pose_pseudo_loss(inputs, poses)
+                #     if len(shift_loss) > 0:
+                #         total_loss = 0.3 * sum(shift_loss) / len(shift_loss) + total_loss
 
                 self.scaler.scale(total_loss).backward()
                 # self.scaler.step(self.opt)
                 self.scaler.step(self.pose_opt)
                 self.scaler.step(self.depth_opt)
                 self.scaler.update()
+                train_loss.append(total_loss.detach().cpu().numpy())
+
             # break
         return train_loss
 
@@ -295,7 +290,7 @@ class PairTrainer():
         self.model.eval()
         with torch.no_grad():
             for idx, inputs in enumerate(self.sample_loader):
-                if idx < 0:
+                if idx < 300:
                     continue
                 for key, ipt in inputs.items():
                     inputs[key] = ipt.to(self.device)
@@ -318,7 +313,7 @@ class PairTrainer():
                 img_loss = self.compute_loss(depth_maps, poses, inputs)
                 total_loss.append(img_loss)
             # 返回一个结果
-        return sum(total_loss) / (len(total_loss) + 1e-7)
+        return sum(total_loss) / (len(total_loss) + 1e-7), total_loss
 
     def resume_from(self, model_path):
         self.model.load_state_dict(torch.load(model_path))
@@ -375,7 +370,10 @@ def compute_auto_mask_loss(cur_img, refer_img, cur_depth, refer_depth, pose_tran
     diff_depth = (compute_depth - syn_cur_depth).abs() / (compute_depth + syn_cur_depth)
     diff_depth = diff_depth.mean([1])
     # photo_loss = loss_backend(syn_cur, cur_img, mask, using_mean=True)
+
+    # todo: 通过weight_mask来筛选吊具运动的帧
     weight_mask = (1 - diff_depth)
+
     # 计算个grid的非mask的数量
     valid_mask = (grid[..., 0] < -1) | (grid[..., 0] > 1) | \
                  (grid[..., 1] < -1) | (grid[..., 1] > 1)
@@ -387,6 +385,7 @@ def compute_auto_mask_loss(cur_img, refer_img, cur_depth, refer_depth, pose_tran
     photo_loss = photo_loss.sum(dim=[1, 2]) / valid_mask.sum(dim=[1, 2])
 
     # photo_loss = photo_loss.mean(dim=[1, 2])
+    diff_depth = valid_mask * diff_depth
     diff_depth = diff_depth.sum(dim=[1, 2]) / valid_mask.sum(dim=[1, 2])
     # photo_loss = (weight_mask * photo_loss).mean([1, 2])
     return photo_loss, diff_depth

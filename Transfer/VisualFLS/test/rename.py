@@ -15,4 +15,4 @@ def add_prefix_tag(project_location, img_root):
 
 
 if __name__ == "__main__":
-    add_prefix_tag('tc', r'/root/data/VisualFLS/newly')
+    add_prefix_tag('tc', r'G:\fls_ann\FLVS_TC')

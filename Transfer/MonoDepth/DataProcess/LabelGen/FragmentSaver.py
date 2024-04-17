@@ -16,7 +16,6 @@ class MonoDepthVideoFramgment():
         self.current_frame_id = 0
         self.save_prefix = os.path.join(self.save_root, self.current_subdir)
 
-
     def new_fragment(self, current_frame=None):
         if current_frame is None:
             self.current_fragment += 1

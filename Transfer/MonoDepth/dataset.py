@@ -163,6 +163,29 @@ class MonoDatasetFold(MonoDataset):
         return self.sub_fold, self.filenames[index].rsplit('.')[0]
 
 
+class MonoDatasetMultiFold(MonoDataset):
+    def __init__(self, data_root, image_file, height, width, num_scale=4, is_train=True, img_ext='.png',
+                 coor_shift=[0, 0]):
+        super().__init__(data_root, image_file, height, width, num_scale=num_scale, is_train=is_train, img_ext=img_ext,
+                         coor_shift=coor_shift)
+
+    def get_filenames(self, image_file):
+        # 打开文件，读取
+        train_file_path = os.path.join(image_file, 'train.txt')
+        subfolds = open(train_file_path, 'r', encoding='utf-8').readlines()
+        subfolds = [sb.strip() for sb in subfolds]
+        # 所有子目录来剔除一下
+        all_files = []
+        for subfold in subfolds:
+            sub_root = os.path.join(image_file, subfold)
+            filenames = os.listdir(sub_root)
+            # 肯定是要大于等于三个样本的
+            filenames = sorted(filenames, key=lambda x: eval(x.rsplit('.')[0]))[1:-1]
+            filenames = [sub_root + ' ' + f.rsplit('.')[0] for f in filenames]
+            all_files.extend(filenames)
+        return all_files
+
+
 if __name__ == "__main__":
     r = r'/root/project/AwsomeDL/data/BowlingMono'
     f_p = os.path.join(r, r'bowling/train_files.txt')

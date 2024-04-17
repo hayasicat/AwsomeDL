@@ -23,6 +23,9 @@ class LabelHandler:
     val_labels = 'val.txt'
     backup_path = 'backup'
 
+    # 保存到yolo的格式中
+    yolo_label_path = 'yolo_labels'
+
     def __init__(self):
         self.processor = {}
         self.processor['YH'] = YHProcessor()
@@ -76,10 +79,17 @@ class LabelHandler:
         train_list = [f for i, f in enumerate(img_files) if i % 10 != 0]
         val_list = [f for i, f in enumerate(img_files) if i % 10 == 0]
         # 补充更新标签
-        self.fresh_dataset(train_list, val_list, img_root)
         self.generate_labels(img_root, file_list, img_head)
+        self.fresh_dataset(train_list, val_list, img_root)
 
     def generate_labels(self, img_root, file_list, img_head):
+        """
+        如果这边式使用Yolo的写入方式的话，就重新定义一个新的字段
+        :param img_root:
+        :param file_list:
+        :param img_head:
+        :return:
+        """
         img_files = [f for f in file_list if f.endswith('jpg')]
         seg_root = os.path.join(img_root, self.seg_save_path)
         crop_root = os.path.join(img_root, self.crop_imgs_save_path)
@@ -91,15 +101,38 @@ class LabelHandler:
                 processor = self.processor['YH']
             # 解决问题
             result = processor.transform(os.path.join(img_root, img_head, img_name))
-            # 保存标签
-            crop_img = result['img_patch']
-            mask_img = result['mask_patch']
-            corner_points_js = result['corner_points']
-            cv2.imwrite(os.path.join(seg_root, img_name.replace('jpg', 'png')), mask_img)
-            cv2.imwrite(os.path.join(crop_root, img_name), crop_img)
-            with open(os.path.join(js_root, img_name.replace('.jpg', '.json')), 'w', encoding='utf-8') as f:
-                f.write(json.dumps(corner_points_js))
-                f.flush()
+            # 通过字典名字来保存不同的名字
+            result_keys = list(result.keys())
+            if 'img_patch' in result_keys and 'mask_patch' in result_keys:
+                crop_img = result['img_patch']
+                mask_img = result['mask_patch']
+                corner_points_js = result['corner_points']
+                cv2.imwrite(os.path.join(seg_root, img_name.replace('jpg', 'png')), mask_img)
+                cv2.imwrite(os.path.join(crop_root, img_name), crop_img)
+                with open(os.path.join(js_root, img_name.replace('.jpg', '.json')), 'w', encoding='utf-8') as f:
+                    f.write(json.dumps(corner_points_js))
+                    f.flush()
+            # 这边保存yolo格式的
+            if 'img_patch' in result_keys and 'crop_polygons' in result_keys:
+                crop_img = result['img_patch']
+                yolo_root = os.path.join(img_root, self.yolo_label_path)
+                if not os.path.exists(yolo_root):
+                    os.makedirs(yolo_root)
+                ann_formats = []
+                for idx, polygons in enumerate(result['crop_polygons']):
+                    for pts in polygons:
+                        ann = [idx]
+                        for pt in pts:
+                            ann.append(pt[0])
+                            ann.append(pt[1])
+                        ann = ' '.join([str(i) for i in ann])
+                        ann_formats.append(ann)
+                content = '\n'.join(ann_formats)
+                cv2.imwrite(os.path.join(yolo_root, img_name), crop_img)
+                with open(os.path.join(yolo_root, img_name.replace('.jpg', '.txt')), 'w', encoding='utf-8') as f:
+                    f.write(content)
+                    f.flush()
+                # 将内容写入
 
 
 if __name__ == '__main__':

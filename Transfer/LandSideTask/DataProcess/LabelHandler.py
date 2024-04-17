@@ -7,7 +7,7 @@ import os
 import datetime
 from shutil import copyfile
 
-from Transfer.LandSideTask.DataProcess.YHProcessor import YHProcessor
+from DataProcess.YHProcessor import YHProcessor
 
 
 class LabelHandler():
@@ -25,9 +25,9 @@ class LabelHandler():
         img_root = os.path.join(dataset_root, self.source_img_path)
         self.cls_list = open(os.path.join(img_root, cls_index), 'r', encoding='utf-8').read().strip().split(',')
         self.cls_list = [cls_name.lower() for cls_name in self.cls_list]
+
         self.data_root = dataset_root
         self.processor = {}
-        # 似乎如果不是远海的生成规则也是一样的
         self.processor['YH'] = YHProcessor(self.cls_list)
 
     def handle(self):
@@ -56,6 +56,7 @@ class LabelHandler():
             os.makedirs(save_root)
         for img_name in img_files:
             img_path = os.path.join(data_root, img_head, img_name)
+            print(img_path)
             # 写入生成的标签
             content = self.processor['YH'].transform(img_path)
             # 替换最后一个.
@@ -83,7 +84,7 @@ class LabelHandler():
                 f = open(f_name, 'w', encoding='utf-8')
             else:
                 f = open(f_name, 'a+', encoding='utf-8')
-            f.writelines([os.path.join('.', self.source_img_path, f) + '\n' for f in sample])
+            f.writelines([os.path.join('.', img_root, f) + '\n' for f in sample])
             f.flush()
             f.close()
 
@@ -102,4 +103,4 @@ class LabelHandler():
 
 
 if __name__ == "__main__":
-    LabelHandler(r'G:/FLSNEW/example').handle()
+    LabelHandler(r'/backup/datasets/VFLS/LandSide').handle()

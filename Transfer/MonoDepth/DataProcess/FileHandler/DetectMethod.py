@@ -128,16 +128,25 @@ class SCDepthDetector():
 
     def is_activate(self, frame):
         frame = cv2.resize(frame, (896, 416))
+        frame = self.crop(frame)
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # 来个高斯平滑，不然箱面区域的采样实在是太过于密集了
+        frame_gray = cv2.medianBlur(frame_gray, 5)
+
         if len(self.cache_list) == 0:
             self.cache_list.append(frame_gray)
             return True
         history_frame = self.cache_list[0]
         h, w = frame_gray.shape
         diff = np.abs(history_frame - frame_gray)
+        # 因为纹理比较多如果只是>10那就是走大车比较短采样小车比价长采样
         ratio = (diff > 10).sum() / (h * w)
-        # noisy超过一定阈值以后
+        # 连续超过三次阈值以后才开始保存
         if ratio >= self.threshold:
+            # cv2.imshow("history_img", history_frame)
+            # cv2.imshow("cur", frame_gray)
+            # cv2.imshow("img", (diff > 15).astype(np.uint8) * 255)
+            # cv2.waitKey(0)
             self.cache_list.pop(0)
             self.cache_list.append(frame_gray)
             return True
@@ -146,9 +155,12 @@ class SCDepthDetector():
     def clear(self):
         self.cache_list = []
 
+    def crop(self, img):
+        return img[:300, :, :]
+
 
 class FeatureMatchDetector():
-    def __init__(self,threshold=10):
+    def __init__(self, threshold=10):
         # 虽然比较慢一点，按时能得到一个稳定结果的话，也还算是还不错
 
         pass

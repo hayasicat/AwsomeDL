@@ -9,6 +9,7 @@ import copy
 import cv2
 
 from Transfer.VisualFLS.DataProcess.base import parser_json, drawing_mask, img_crop, BaseProcessor
+from .coordinates_overlap import get_overlap_coordinates
 
 
 class YHProcessor(BaseProcessor):
@@ -51,7 +52,36 @@ class YHProcessor(BaseProcessor):
         result = {'img_patch': crop_img, 'mask_patch': mask_img}
         # 关键点坐标的生成
         result['corner_points'] = self.get_corner_points(js_dict, crop_size)
+        # crop_coordinates 这边用来生成相应的标签
+        crop_polygons = self.crop_coordinates(crop_size, mask_polygons)
+        result['crop_polygons'] = crop_polygons
         return result
+
+    def crop_coordinates(self, crop_size, mask_polygons):
+        """裁剪图片"""
+        x, y, w, h = crop_size
+        crop_coor = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+        crop_polygons = []
+        for polygons in mask_polygons:
+            crop_polygon = []
+            for p in polygons:
+                is_intersection, inter_section_points = get_overlap_coordinates(crop_coor, p)
+                if is_intersection:
+                    format_inter_section_points = self.format_polygons(crop_size, inter_section_points)
+                    crop_polygon.extend(format_inter_section_points)
+            crop_polygons.append(crop_polygon)
+        # 格式化坐标点
+        return crop_polygons
+
+    def format_polygons(self, crop_size, polygons):
+        x, y, w, h = crop_size
+        formated_polygons = []
+        for p in polygons:
+            new_p = []
+            for x1, y1 in p:
+                new_p.append([(x1 - x) / w, (y1 - y) / h])
+            formated_polygons.append(new_p)
+        return formated_polygons
 
     def get_corner_points(self, json_dict, crop_size):
         corner_points_dict = {}

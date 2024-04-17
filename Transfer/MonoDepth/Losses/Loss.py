@@ -21,7 +21,9 @@ class ReprojectLoss(_Loss):
             self.ssim = SSIM(7)
 
     def forward(self, pred, target):
-        abs_diff = torch.abs(pred - target)
+        # abs_diff = torch.abs(pred - target)
+        # TODO: 二次方提高目标函数的关注度
+        abs_diff = (pred - target) ** 2
         l1_loss = abs_diff.mean(1, True)
         if not self.has_ssim:
             reprojection_loss = l1_loss
@@ -50,8 +52,6 @@ class EdgeSmoothLoss(_Loss):
         grad_disp_y *= torch.exp(-grad_img_y)
         # 批维度要有
         return grad_disp_x.mean([1, 2, 3]) + grad_disp_y.mean([1, 2, 3])
-
-
 
 
 class AutoMask(_Loss):

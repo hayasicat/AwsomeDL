@@ -101,6 +101,9 @@ class MonoDepthSTN(nn.Module):
         # 系数是一个超参的值，调越大训练可能越不稳定
         # 系数是一个超参数的值，越大的话更容易控制姿态网络的一个跳变幅度，这样子的结果更容易保证一个姿态输出的稳定性
         refer_trans = 0.1 * refer_trans.view(pre_image.size(0), -1, 6)
+        # 深度为0.1的时候
+        # 当采样率限制的情况，本身他们的移动距离也不会超过太多。甚至还可以使用一个尺度因子来决定它行走的大小，小车走了多少就由它本身决定就好了
+        # refer_trans = 0.01 * refer_trans.view(pre_image.size(0), -1, 6)
         refer_trans[..., -1] = 0.5 * refer_trans[..., -1]
         refer_trans[..., :3] = 0.1 * refer_trans[..., :3]
         # 防止超出
@@ -131,14 +134,13 @@ class MonoDepthSTN(nn.Module):
         cur_x = (cur_image - 0.45) / 0.225
         next_x = (next_image - 0.45) / 0.225
         # 尽量缩小图片
-        pre_pose = (F.interpolate(pre_image, scale_factor=0.5, mode='bilinear') - 0.45) / 0.225
-        cur_pose = (F.interpolate(cur_image, scale_factor=0.5, mode='bilinear') - 0.45) / 0.225
-        next_pose = (F.interpolate(next_image, scale_factor=0.5, mode='bilinear') - 0.45) / 0.225
+        # pre_pose = (F.interpolate(pre_image, scale_factor=0.5, mode='bilinear') - 0.45) / 0.225
+        # cur_pose = (F.interpolate(cur_image, scale_factor=0.5, mode='bilinear') - 0.45) / 0.225
+        # next_pose = (F.interpolate(next_image, scale_factor=0.5, mode='bilinear') - 0.45) / 0.225
 
-        refers_pose = self.get_pose(pre_pose, cur_pose)
+        refers_pose = self.get_pose(prex_x, cur_x)
         # refers_pose = self.get_pose(cur_x, prex_x)
-        next_pose = self.get_pose(cur_pose, next_pose)
-        cur_pose = self.get_pose(cur_pose, cur_pose)
+        next_pose = self.get_pose(cur_x, next_x)
 
         # refers_pose = self.get_pose(prex_x, cur_x)
         # # refers_pose = self.get_pose(cur_x, prex_x)
@@ -148,7 +150,7 @@ class MonoDepthSTN(nn.Module):
         depth_maps = self.depth_map(cur_x)
         pre_depth_maps = self.depth_map(prex_x)
         nex_depth_maps = self.depth_map(next_x)
-        return [depth_maps, pre_depth_maps, nex_depth_maps], [refers_pose, next_pose, cur_pose]
+        return [depth_maps, pre_depth_maps, nex_depth_maps], [refers_pose, next_pose]
 
 
 class MonoDepthPair(MonoDepthSTN):

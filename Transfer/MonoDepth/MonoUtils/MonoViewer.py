@@ -26,7 +26,7 @@ class MonoPloter():
         self.use_plt = use_plt
         self.show_idx = 0
         self.img_root = img_root
-        if not os.path.exists(self.img_root):
+        if not os.path.exists(self.img_root) and len(img_root) > 0:
             os.makedirs(self.img_root)
 
     def show_depth(self, depth, is_show_normal=True):
